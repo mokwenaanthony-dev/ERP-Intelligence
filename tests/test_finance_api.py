@@ -98,7 +98,7 @@ def test_journal_cannot_be_edited_or_deleted_via_api(demo, accountant):
 
 def test_list_filters(demo, accountant):
     assert accountant.get(JOURNAL, {"company_code": "1000", "document_type": "DR"}).data["count"] == 1
-    assert accountant.get(JOURNAL, {"fiscal_year": 2027, "period": 1}).data["count"] == 2
+    assert accountant.get(JOURNAL, {"fiscal_year": 2027, "period": 1}).data["count"] == 3  # incl. opening stock
     assert accountant.get(JOURNAL, {"status": "REVERSED"}).data["count"] == 0
     assert accountant.get(JOURNAL, {"fiscal_year": "abc"}).status_code == 400
 
@@ -132,7 +132,7 @@ def test_trial_balance_endpoint(demo, accountant):
     assert response.status_code == 200
     assert response.data["balanced"] is True
     assert response.data["currency"] == "ZAR"
-    assert response.data["total_debit"] == Decimal("511500.00")
+    assert response.data["total_debit"] == Decimal("538500.00")
 
 
 @pytest.mark.parametrize(
@@ -187,7 +187,7 @@ def test_gl_account_crud_and_protection(demo, finance_manager, accountant):
     assert created.data["is_balance_sheet"] is False
     assert accountant.post("/api/finance/gl-accounts/", {**payload, "number": "6400"},
                            format="json").status_code == 403
-    assert finance_manager.get("/api/finance/gl-accounts/", {"chart_of_accounts": "CAZA"}).data["count"] == 18
+    assert finance_manager.get("/api/finance/gl-accounts/", {"chart_of_accounts": "CAZA"}).data["count"] == 22
 
     used = demo.account("1000")
     assert finance_manager.delete(f"/api/finance/gl-accounts/{used.pk}/").status_code == 409

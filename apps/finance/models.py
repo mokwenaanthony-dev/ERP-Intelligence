@@ -141,14 +141,20 @@ class DocumentType(models.TextChoices):
     CUSTOMER_PAYMENT = "DZ", "Customer payment"
     SUPPLIER_INVOICE = "KR", "Supplier invoice"
     SUPPLIER_PAYMENT = "KZ", "Supplier payment"
+    GOODS_RECEIPT = "WE", "Goods receipt"
+    GOODS_ISSUE = "WA", "Goods issue"
+    INVENTORY_ADJUSTMENT = "WI", "Inventory adjustment"
 
 
 class NumberRange(models.Model):
-    """Next document number per company code, fiscal year and document type."""
+    """Next document number per company code, fiscal year and document type.
+
+    Shared by journal entries (``DocumentType`` codes) and material documents ("MD").
+    """
 
     company_code = models.ForeignKey("organization.CompanyCode", on_delete=models.PROTECT, related_name="+")
     fiscal_year = models.PositiveSmallIntegerField()
-    document_type = models.CharField(max_length=2, choices=DocumentType.choices)
+    document_type = models.CharField(max_length=2)
     next_number = models.PositiveIntegerField(default=1)
 
     class Meta:
@@ -166,7 +172,9 @@ class ImmutableDocumentError(Exception):
     """Raised on any attempt to change or delete a posted journal document."""
 
 
-class _ImmutableModel(models.Model):
+class ImmutableModel(models.Model):
+    """Abstract base for posted documents: insert once, never update or delete."""
+
     class Meta:
         abstract = True
 
@@ -179,7 +187,7 @@ class _ImmutableModel(models.Model):
         raise ImmutableDocumentError("Posted journal documents cannot be deleted; post a reversal instead.")
 
 
-class JournalEntry(_ImmutableModel, AuditedModel):
+class JournalEntry(ImmutableModel, AuditedModel):
     """Document header. Created only through ``apps.finance.services.post_journal_entry``."""
 
     class Status(models.TextChoices):
@@ -217,7 +225,7 @@ class JournalEntry(_ImmutableModel, AuditedModel):
         return f"{self.company_code.code}/{self.fiscal_year}/{self.document_number}"
 
 
-class JournalLine(_ImmutableModel):
+class JournalLine(ImmutableModel):
     """The Universal Journal: one row per line item, every dimension on the row.
 
     Amounts are signed: debits positive, credits negative, so any balance is a

@@ -2,7 +2,16 @@ from django.contrib import admin
 
 from apps.common.admin import AuditedAdminMixin
 
-from .models import BusinessPartner, Currency, CustomerRole, ExchangeRate, Material, SupplierRole, UnitOfMeasure
+from .models import (
+    BusinessPartner,
+    Currency,
+    CustomerRole,
+    ExchangeRate,
+    Material,
+    MaterialPlant,
+    SupplierRole,
+    UnitOfMeasure,
+)
 
 
 class CustomerRoleInline(admin.TabularInline):
@@ -40,3 +49,9 @@ class CodeNameAdmin(AuditedAdminMixin, admin.ModelAdmin):
 @admin.register(ExchangeRate)
 class ExchangeRateAdmin(AuditedAdminMixin, admin.ModelAdmin):
     list_display = ("from_currency", "to_currency", "rate", "valid_from")
+
+
+@admin.register(MaterialPlant)
+class MaterialPlantAdmin(AuditedAdminMixin, admin.ModelAdmin):
+    list_display = ("material", "plant")
+    list_filter = ("plant",)
