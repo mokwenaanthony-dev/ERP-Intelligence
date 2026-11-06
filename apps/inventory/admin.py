@@ -2,13 +2,7 @@ from django.contrib import admin
 
 from apps.common.admin import AuditedAdminMixin
 
-from .models import InventoryAccountSetting, MaterialDocument, MaterialDocumentItem, Product
-
-
-@admin.register(Product)
-class ProductAdmin(AuditedAdminMixin, admin.ModelAdmin):
-    list_display = ("sku", "name", "price", "stock", "updated_at")
-    search_fields = ("sku", "name")
+from .models import InventoryAccountSetting, MaterialDocument, MaterialDocumentItem
 
 
 @admin.register(InventoryAccountSetting)

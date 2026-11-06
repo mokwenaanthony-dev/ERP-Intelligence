@@ -5,20 +5,8 @@ from apps.masterdata.models import BusinessPartner, Material
 from apps.organization.models import Plant, StorageLocation
 
 from . import services
-from .models import InventoryAccountSetting, MaterialDocument, MaterialDocumentItem, MovementType, Product
+from .models import InventoryAccountSetting, MaterialDocument, MaterialDocumentItem, MovementType
 
-
-class ProductSerializer(serializers.ModelSerializer):
-    price = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
-    stock = serializers.IntegerField(min_value=0, required=False)
-
-    class Meta:
-        model = Product
-        fields = ["id", "name", "sku", "price", "stock", "created_at", "updated_at", "created_by", "updated_by"]
-        read_only_fields = ["id", "created_at", "updated_at", "created_by", "updated_by"]
-
-
-# --- Wave 2a: stock ledger ---------------------------------------------------------------
 
 AUDIT_FIELDS = ["created_at", "updated_at", "created_by", "updated_by"]
 

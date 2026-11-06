@@ -1,65 +1,71 @@
-"""The role matrix from section 3 of the design document."""
+"""The role matrix across modules (design document section 3, extended in Waves 1-2b).
+
+A request that passes the permission check returns anything except 403 (often 400 here,
+because the test sends an empty body); a request that fails it returns 403.
+"""
 import pytest
-from django.urls import reverse
+from rest_framework.test import APIClient
 
 from apps.accounts.models import Role
 
 pytestmark = pytest.mark.django_db
 
-PRODUCTS = "product-list"
-ORDERS = "sales-order-list"
-CUSTOMERS = "customer-list"
+ORDERS = "/api/sales/orders/"
+PRICES = "/api/sales/prices/"
+DELIVERIES = "/api/sales/deliveries/"
+INVOICES = "/api/sales/invoices/"
+MOVEMENTS = "/api/inventory/goods-movements/"
+JOURNAL = "/api/finance/journal-entries/"
+PAYMENTS = "/api/finance/incoming-payments/"
+MATERIALS = "/api/masterdata/materials/"
+
+R, W = "get", "post"
 
 
 @pytest.mark.parametrize(
-    "role, url_name, method, allowed",
+    "role, url, method, allowed",
     [
-        # Sales rep: writes sales, only looks up the catalogue
-        (Role.SALES_REP, ORDERS, "post", True),
-        (Role.SALES_REP, CUSTOMERS, "post", True),
-        (Role.SALES_REP, PRODUCTS, "get", True),
-        (Role.SALES_REP, PRODUCTS, "post", False),
-        # Inventory manager: inventory only
-        (Role.INVENTORY_MANAGER, PRODUCTS, "post", True),
-        (Role.INVENTORY_MANAGER, ORDERS, "get", False),
-        # Finance manager: reads sales and inventory, never dispatches or edits stock
-        (Role.FINANCE_MANAGER, ORDERS, "get", True),
-        (Role.FINANCE_MANAGER, ORDERS, "post", False),
-        (Role.FINANCE_MANAGER, PRODUCTS, "get", True),
-        (Role.FINANCE_MANAGER, PRODUCTS, "post", False),
-        # Purchasing officer: catalogue read only
-        (Role.PURCHASING_OFFICER, PRODUCTS, "get", True),
-        (Role.PURCHASING_OFFICER, ORDERS, "get", False),
+        # Sales rep: orders, prices and invoices; reads stock; no finance
+        (Role.SALES_REP, ORDERS, W, True), (Role.SALES_REP, PRICES, W, True), (Role.SALES_REP, INVOICES, W, True),
+        (Role.SALES_REP, DELIVERIES, R, True), (Role.SALES_REP, MOVEMENTS, R, True),
+        (Role.SALES_REP, MOVEMENTS, W, False), (Role.SALES_REP, JOURNAL, R, False),
+        (Role.SALES_REP, PAYMENTS, W, False),
+        # Inventory manager: goods movements and materials; no sales orders or invoices
+        (Role.INVENTORY_MANAGER, MOVEMENTS, W, True), (Role.INVENTORY_MANAGER, MATERIALS, W, True),
+        (Role.INVENTORY_MANAGER, DELIVERIES, R, True), (Role.INVENTORY_MANAGER, ORDERS, R, False),
+        (Role.INVENTORY_MANAGER, INVOICES, R, False),
+        # Finance manager: reads sales, bills, takes payments; never moves stock or enters orders
+        (Role.FINANCE_MANAGER, ORDERS, R, True), (Role.FINANCE_MANAGER, ORDERS, W, False),
+        (Role.FINANCE_MANAGER, INVOICES, W, True), (Role.FINANCE_MANAGER, PAYMENTS, W, True),
+        (Role.FINANCE_MANAGER, MOVEMENTS, W, False),
+        # Accountant: journal, billing and payments
+        (Role.ACCOUNTANT, JOURNAL, W, True), (Role.ACCOUNTANT, INVOICES, W, True),
+        (Role.ACCOUNTANT, PAYMENTS, W, True), (Role.ACCOUNTANT, DELIVERIES, R, True),
+        # Purchasing officer: reads stock only (purchasing arrives in Wave 2c)
+        (Role.PURCHASING_OFFICER, MOVEMENTS, R, True), (Role.PURCHASING_OFFICER, ORDERS, R, False),
         # HR admin: nothing outside HR
-        (Role.HR_ADMIN, PRODUCTS, "get", False),
-        (Role.HR_ADMIN, ORDERS, "get", False),
+        (Role.HR_ADMIN, ORDERS, R, False), (Role.HR_ADMIN, MOVEMENTS, R, False), (Role.HR_ADMIN, JOURNAL, R, False),
         # Viewer: read only
-        (Role.VIEWER, ORDERS, "get", True),
-        (Role.VIEWER, ORDERS, "post", False),
-        # Admin: everything
-        (Role.ADMIN, PRODUCTS, "post", True),
-        (Role.ADMIN, ORDERS, "post", True),
+        (Role.VIEWER, ORDERS, R, True), (Role.VIEWER, INVOICES, R, True), (Role.VIEWER, ORDERS, W, False),
+        (Role.VIEWER, INVOICES, W, False),
+        # Administrator: everything
+        (Role.ADMIN, ORDERS, W, True), (Role.ADMIN, JOURNAL, W, True), (Role.ADMIN, PAYMENTS, W, True),
     ],
 )
-def test_role_matrix(client_for, customer, role, url_name, method, allowed):
-    client = client_for(role)
-    payloads = {
-        PRODUCTS: {"name": "New", "sku": f"NEW-{role}", "price": "1.00", "stock": 1},
-        ORDERS: {"customer": customer.pk},
-        CUSTOMERS: {"name": "New Co", "email": f"{role.lower()}@new.example.com"},
-    }
-    response = getattr(client, method)(reverse(url_name), payloads[url_name] if method == "post" else None,
-                                       format="json")
+def test_role_matrix(client_for, role, url, method, allowed):
+    response = getattr(client_for(role), method)(url, {}, format="json")
     if allowed:
-        assert response.status_code in (200, 201), response.data
+        assert response.status_code != 403, response.data
     else:
         assert response.status_code == 403
 
 
-def test_superuser_passes_every_check(make_user, customer):
-    from rest_framework.test import APIClient
-
-    user = make_user(Role.VIEWER, username="root", is_superuser=True)
+def test_superuser_passes_every_check(make_user):
     client = APIClient()
-    client.force_authenticate(user=user)
-    assert client.post(reverse(ORDERS), {"customer": customer.pk}, format="json").status_code == 201
+    client.force_authenticate(user=make_user(Role.VIEWER, username="root", is_superuser=True))
+    assert client.post(JOURNAL, {}, format="json").status_code == 400  # past the permission check
+
+
+def test_unauthenticated_requests_are_rejected(anon_client):
+    for url in (ORDERS, MOVEMENTS, JOURNAL):
+        assert anon_client.get(url).status_code == 401
