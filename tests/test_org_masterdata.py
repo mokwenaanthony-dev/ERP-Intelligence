@@ -26,8 +26,9 @@ pytestmark = pytest.mark.django_db
 def test_everyone_reads_org_structure_but_only_admin_changes_it(demo, client_for):
     sales = client_for(Role.SALES_REP)
     assert sales.get("/api/org/company-codes/1000/").data["currency"] == "ZAR"
-    for path in ("plants", "storage-locations", "sales-organizations", "purchasing-organizations"):
-        assert sales.get(f"/api/org/{path}/").data["count"] == 1, path
+    for path, count in (("plants", 1), ("storage-locations", 2), ("sales-organizations", 1),
+                        ("purchasing-organizations", 1)):
+        assert sales.get(f"/api/org/{path}/").data["count"] == count, path
     assert sales.post("/api/org/plants/", {"code": "2000", "name": "Durban", "company_code": "1000"},
                       format="json").status_code == 403
 
@@ -147,7 +148,7 @@ def test_reference_data(demo, client_for):
 def test_string_representations(demo):
     assert str(demo.company) == "1000 ERP Demo (Pty) Ltd"
     assert str(Plant.objects.get()) == "1000 Johannesburg"
-    assert str(StorageLocation.objects.get()) == "1000/0001 Main warehouse"
+    assert str(StorageLocation.objects.get(code="0001")) == "1000/0001 Main warehouse"
     assert str(SalesOrganization.objects.get()) == "1000 Sales South Africa"
     assert str(PurchasingOrganization.objects.get()) == "1000 Purchasing South Africa"
     assert str(demo.currency("ZAR")) == "ZAR"
@@ -169,10 +170,10 @@ def test_string_representations(demo):
 def test_setup_demo_company_is_repeatable(demo):
     call_command("setup_demo_company", "--fiscal-year", "2027", stdout=StringIO())
     assert CompanyCode.objects.count() == 1
-    assert GLAccount.objects.count() == 17
+    assert GLAccount.objects.count() == 21
     assert TaxCode.objects.count() == 5
     assert BusinessPartner.objects.count() == 2
-    assert JournalEntry.objects.count() == 2
+    assert JournalEntry.objects.count() == 3
 
 
 def test_setup_demo_company_defaults_to_current_fiscal_year(db):

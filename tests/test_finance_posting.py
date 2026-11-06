@@ -334,7 +334,7 @@ def test_reversal_into_closed_period_fails_and_leaves_original_posted(demo):
 def test_trial_balance_from_demo_postings(demo):
     report = services.trial_balance(demo.company, 2027)
     assert report["balanced"] is True
-    assert report["total_debit"] == report["total_credit"] == Decimal("511500.00")
+    assert report["total_debit"] == report["total_credit"] == Decimal("538500.00")  # incl. R27,000 opening stock
     by_account = {row["account"]: row for row in report["accounts"]}
     assert by_account["2100"]["credit"] == Decimal("1500.00")
     assert by_account["2100"]["balance"] == Decimal("-1500.00")

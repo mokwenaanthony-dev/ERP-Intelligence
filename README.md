@@ -16,7 +16,9 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 |---|---|---|
 | 0 | Foundation: roles and permissions, audit trail, sales orders with stock rules, request logging, tests, CI | Done |
 | 1 | Org structure, Business Partner, Material master, Finance core (Universal Journal, fiscal periods, VAT) | Done |
-| 2 | Stock-movement ledger, Order-to-Cash, Procure-to-Pay | Next |
+| 2a | Stock-movement ledger: movement types, moving-average valuation, automatic journal postings, stock reconciliation | Done |
+| 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment | Next |
+| 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment | Planned |
 | 3 | HR and payroll posting, cost and profit centres | Planned |
 | 4 | Analytics layer and BI dashboards | Planned |
 | 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
@@ -68,8 +70,36 @@ POST /api/finance/journal-entries/
 The response is document `DR00000002` with three lines: the 15% output VAT line (R300.00 to account 2100)
 is added by the system.
 
-Purchasing and HR are empty apps reserved for Waves 2-3. Sales customers and inventory products move onto
-Business Partner and Material in Wave 2.
+## What Wave 2a delivers
+
+| Area | What exists |
+|---|---|
+| Movement types | 561 initial stock, 101 goods receipt, 601 goods issue for delivery, 551 scrapping, 701/702 physical inventory gain/loss, 311 transfer between storage locations |
+| Material documents | Immutable, numbered (`MD00000001`), reversible; items carry signed quantities and values per storage location |
+| Valuation | Moving average price per material and plant, always computed from the movements (no stored totals); issuing all stock takes the full remaining value, so no cents are left behind |
+| Accounting | Every value-changing movement posts a journal entry in the same transaction (`WE` receipts, `WA` issues, `WI` count differences), with material and plant on each line |
+| Account determination | Inventory, GR/IR clearing, initial entry, cost of sales, scrapping and inventory-difference accounts per chart, optionally per material type |
+| Controls | Stock checked per storage location; closed periods blocked; reversals refused if the stock has already been issued or would leave value without quantity |
+| Reports | Stock overview (quantity per storage location, value and moving average price per plant) and a stock-to-ledger reconciliation that proves stock value equals the inventory account balance |
+
+### Posting a goods receipt
+
+```http
+POST /api/inventory/goods-movements/
+{
+  "movement_type": "101",
+  "plant": "1000",
+  "posting_date": "2026-05-15",
+  "business_partner": "1000002",
+  "items": [{"material": "TG-1001", "storage_location": "0001", "quantity": "50", "unit_price": "150.00"}]
+}
+```
+
+Creates material document `MD00000002` and journal entry `WE00000002` (Dr 1200 Inventory R7,500 /
+Cr 2300 GR/IR clearing R7,500). The moving average price of TG-1001 moves from R120 to R130.
+
+Purchasing and HR are empty apps reserved for Waves 2c and 3. The Wave 0 sales `Customer` and inventory
+`Product` are replaced by Business Partner and Material in Wave 2b.
 
 ## Role matrix
 
@@ -78,7 +108,7 @@ Business Partner and Material in Wave 2.
 | Finance Manager | finance (incl. configuration, period open/close), currencies and rates, business partners | sales, inventory |
 | Accountant | journal entries, business partners | finance configuration, sales, inventory |
 | Sales Representative | sales (orders, customers), business partners | inventory (catalogue) |
-| Inventory Manager | inventory, materials | - |
+| Inventory Manager | inventory (products, goods movements), materials | - |
 | Purchasing Officer | purchasing, business partners, materials | inventory |
 | HR Admin | hr | - |
 | Viewer | - | sales, inventory |
@@ -128,6 +158,11 @@ Change status with `PATCH /api/sales/orders/<id>/ {"status": "CONFIRMED"}`.
 | GET, POST | `/api/finance/journal-entries/` | POST posts; filters `company_code`, `fiscal_year`, `period`, `document_type`, `status` |
 | POST | `/api/finance/journal-entries/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/finance/reports/trial-balance/` | `?company_code=1000&fiscal_year=2027[&period_from=&period_to=]` |
+| GET, POST | `/api/inventory/goods-movements/` | POST posts; filters `plant`, `movement_type`, `material`, `status` |
+| POST | `/api/inventory/goods-movements/<id>/reverse/` | Optional `{"posting_date"}` |
+| GET | `/api/inventory/stock/` | `?plant=&material=` |
+| GET | `/api/inventory/reports/stock-reconciliation/` | `?company_code=1000` |
+| CRUD | `/api/inventory/account-settings/` | Account determination (Finance Manager) |
 
 Send `Authorization: Bearer <access>` on every call except health and auth. A Postman collection is in `postman/`.
 
@@ -143,7 +178,7 @@ pip install -r requirements-dev.txt
 copy .env.example .env            # macOS/Linux: cp; then set DJANGO_SECRET_KEY
 python manage.py migrate
 python manage.py seed_data            # one user per role, password ChangeMe123!
-python manage.py setup_demo_company   # company 1000 with finance set-up and sample postings
+python manage.py setup_demo_company   # company 1000: finance set-up, sample postings, opening stock
 python manage.py runserver
 ```
 
@@ -177,7 +212,8 @@ apps/
   masterdata/  Currencies, exchange rates, units, Business Partner and roles, Material master
   finance/     Chart of accounts, fiscal calendar, tax codes, Universal Journal;
                services.py holds the posting rules; setup_demo_company command
-  inventory/   Products
+  inventory/   Stock ledger: material documents, valuation, account determination;
+               services.py holds the movement rules (plus the Wave 0 Product)
   sales/       Customers, orders, lines; services.py holds the order rules
   purchasing/ hr/    Reserved for Waves 2-3
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery

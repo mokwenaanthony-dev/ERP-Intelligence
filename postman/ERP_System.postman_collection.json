@@ -28,6 +28,14 @@
     {
       "key": "customer_bp",
       "value": "1000001"
+    },
+    {
+      "key": "movement_id",
+      "value": "1"
+    },
+    {
+      "key": "supplier_bp",
+      "value": "1000002"
     }
   ],
   "item": [
@@ -1150,6 +1158,265 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"company_code\": \"1000\",\n  \"year\": 2028\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory - stock ledger (login as inventory_manager)",
+      "item": [
+        {
+          "name": "Stock overview plant 1000",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/stock/?plant=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "stock",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Goods receipt 101 (posts Dr Inventory / Cr GR-IR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/goods-movements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "goods-movements",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movement_type\": \"101\",\n  \"plant\": \"1000\",\n  \"posting_date\": \"2026-05-15\",\n  \"reference\": \"DN-778\",\n  \"business_partner\": \"{{supplier_bp}}\",\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"storage_location\": \"0001\",\n      \"quantity\": \"50\",\n      \"unit_price\": \"150.00\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('movement_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Goods issue 601 (valued at moving average)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/goods-movements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "goods-movements",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movement_type\": \"601\",\n  \"plant\": \"1000\",\n  \"posting_date\": \"2026-05-16\",\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"storage_location\": \"0001\",\n      \"quantity\": \"30\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('movement_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transfer 311 to dispatch area",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/goods-movements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "goods-movements",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movement_type\": \"311\",\n  \"plant\": \"1000\",\n  \"posting_date\": \"2026-05-16\",\n  \"items\": [\n    {\n      \"material\": \"TG-1002\",\n      \"storage_location\": \"0001\",\n      \"to_storage_location\": \"0002\",\n      \"quantity\": \"10\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('movement_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List goods movements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/goods-movements/?plant=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "goods-movements",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reverse goods movement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/goods-movements/{{movement_id}}/reverse/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "goods-movements",
+                "{{movement_id}}",
+                "reverse",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Stock-to-ledger reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/reports/stock-reconciliation/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "reports",
+                "stock-reconciliation",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
             }
           }
         }

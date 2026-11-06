@@ -77,7 +77,8 @@ def pending_order(customer, widget, gadget):
 def demo(db):
     """South African demo company 1000, fiscal year 2027 (1 March 2026 - 28 February 2027).
 
-    Already contains two postings dated 2026-03-01: SA00000001 (capital) and DR00000001 (invoice with VAT).
+    Already contains, dated 2026-03-01: SA00000001 (capital), DR00000001 (invoice with VAT) and
+    opening stock MD00000001 / WE00000001: 100 x TG-1001 @ R120 and 50 x TG-1002 @ R300 in 1000/0001.
     """
     from io import StringIO
     from types import SimpleNamespace

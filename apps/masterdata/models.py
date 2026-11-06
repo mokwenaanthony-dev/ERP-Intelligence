@@ -183,5 +183,30 @@ class Material(AuditedModel):
     class Meta:
         ordering = ["number"]
 
+    @property
+    def is_stock_managed(self) -> bool:
+        """Services are not kept in stock."""
+        return self.material_type != self.MaterialType.SERVICE
+
     def __str__(self):
         return f"{self.number} {self.description}"
+
+
+class MaterialPlant(AuditedModel):
+    """The plant view of a material (SAP: plant data): the material is used at this plant.
+
+    Created automatically on the first goods movement. Stock movements for one
+    material in one plant are serialised by locking this row.
+    """
+
+    material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name="plants")
+    plant = models.ForeignKey("organization.Plant", on_delete=models.PROTECT, related_name="materials")
+
+    class Meta:
+        ordering = ["material__number", "plant__code"]
+        constraints = [
+            models.UniqueConstraint(fields=["material", "plant"], name="unique_material_per_plant"),
+        ]
+
+    def __str__(self):
+        return f"{self.material.number} @ {self.plant.code}"

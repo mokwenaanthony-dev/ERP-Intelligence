@@ -7,8 +7,9 @@ Usage:
 Creates currencies and exchange rates, units of measure, chart of accounts
 "CAZA" with VAT tax codes, company code 1000 (ZAR) with a plant, storage
 location and sales/purchasing organisations, a fiscal year with 12 open
-periods, sample business partners and materials, and two sample postings
-(opening capital and a customer invoice with 15% VAT).
+periods, sample business partners and materials, two sample postings (opening
+capital and a customer invoice with 15% VAT), inventory account determination
+and opening stock in plant 1000 (posted to the journal as well).
 
 Safe to run more than once: existing records are left alone.
 """
@@ -20,6 +21,8 @@ from django.db import transaction
 
 from apps.finance import services
 from apps.finance.models import ChartOfAccounts, DocumentType, FiscalYear, GLAccount, JournalEntry, TaxCode
+from apps.inventory import services as inventory
+from apps.inventory.models import AccountKey, InventoryAccountSetting, MaterialDocument, MovementType
 from apps.masterdata.models import (
     BusinessPartner,
     Currency,
@@ -53,11 +56,15 @@ ACCOUNTS = [
     ("2000", "Accounts payable - trade", LIABILITY, SUPPLIER),
     ("2100", "VAT output", LIABILITY, None),
     ("2200", "Accrued expenses", LIABILITY, None),
+    ("2300", "Goods received / invoice received clearing", LIABILITY, None),
     ("3000", "Share capital", EQUITY, None),
     ("3100", "Retained earnings", EQUITY, None),
+    ("3200", "Inventory opening balances", EQUITY, None),
     ("4000", "Sales revenue", REVENUE, None),
     ("4100", "Service revenue", REVENUE, None),
     ("5000", "Cost of sales", EXPENSE, None),
+    ("5100", "Inventory scrapping", EXPENSE, None),
+    ("5200", "Inventory differences", EXPENSE, None),
     ("6000", "Salaries and wages", EXPENSE, None),
     ("6100", "Rent", EXPENSE, None),
     ("6200", "Utilities", EXPENSE, None),
@@ -73,6 +80,17 @@ TAX_CODES = [
     ("I1", "Input VAT 15%", TaxCode.TaxType.INPUT, Decimal("15.00"), "1300"),
     ("I0", "Input VAT zero-rated", TaxCode.TaxType.INPUT, Decimal("0.00"), None),
 ]
+
+
+# account key -> account number (all material types)
+INVENTORY_ACCOUNTS = {
+    AccountKey.INVENTORY: "1200",
+    AccountKey.GR_IR: "2300",
+    AccountKey.INITIAL_ENTRY: "3200",
+    AccountKey.COST_OF_SALES: "5000",
+    AccountKey.SCRAP: "5100",
+    AccountKey.DIFFERENCES: "5200",
+}
 
 
 class Command(BaseCommand):
@@ -120,7 +138,14 @@ class Command(BaseCommand):
         plant, _ = Plant.objects.get_or_create(
             code="1000", defaults={"name": "Johannesburg", "company_code": company, "address": "Johannesburg, Gauteng"}
         )
-        StorageLocation.objects.get_or_create(plant=plant, code="0001", defaults={"name": "Main warehouse"})
+        main_store, _ = StorageLocation.objects.get_or_create(
+            plant=plant, code="0001", defaults={"name": "Main warehouse"}
+        )
+        StorageLocation.objects.get_or_create(plant=plant, code="0002", defaults={"name": "Dispatch area"})
+        for key, number in INVENTORY_ACCOUNTS.items():
+            InventoryAccountSetting.objects.get_or_create(
+                chart_of_accounts=chart, account_key=key, material_type="", defaults={"gl_account": accounts[number]}
+            )
         SalesOrganization.objects.get_or_create(
             code="1000", defaults={"name": "Sales South Africa", "company_code": company}
         )
@@ -157,6 +182,8 @@ class Command(BaseCommand):
 
         if not JournalEntry.objects.filter(company_code=company, fiscal_year=year).exists():
             self._sample_postings(company, fy, accounts, customer)
+        if not MaterialDocument.objects.filter(company_code=company).exists():
+            self._opening_stock(plant, main_store, fy)
 
         self.stdout.write(self.style.SUCCESS(
             f"Demo company {company.code} ready: fiscal year {year}, chart {chart.code}, currency {company.currency}."
@@ -193,3 +220,16 @@ class Command(BaseCommand):
             ],
         )
         self.stdout.write(self.style.SUCCESS("Posted 2 sample journal entries"))
+
+    def _opening_stock(self, plant, storage_location, fiscal_year):
+        items = [
+            inventory.ItemInput(Material.objects.get(number="TG-1001"), storage_location, Decimal("100"),
+                                unit_price=Decimal("120.00")),
+            inventory.ItemInput(Material.objects.get(number="TG-1002"), storage_location, Decimal("50"),
+                                unit_price=Decimal("300.00")),
+        ]
+        inventory.post_goods_movement(
+            movement_type=MovementType.INITIAL_ENTRY, plant=plant, posting_date=fiscal_year.start_date,
+            reference="OPENING", header_text="Opening stock", items=items,
+        )
+        self.stdout.write(self.style.SUCCESS("Posted opening stock: 100 x TG-1001, 50 x TG-1002 (R27,000.00)"))
