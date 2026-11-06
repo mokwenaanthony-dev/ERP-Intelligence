@@ -14,6 +14,8 @@ urlpatterns = [
     path("api/auth/logout/", TokenBlacklistView.as_view(), name="token_blacklist"),
 
     # ERP modules
+    path("api/org/", include("apps.organization.urls")),
+    path("api/masterdata/", include("apps.masterdata.urls")),
     path("api/finance/", include("apps.finance.urls")),
     path("api/inventory/", include("apps.inventory.urls")),
     path("api/sales/", include("apps.sales.urls")),

@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     # ERP modules
     "apps.common",
     "apps.accounts",
+    "apps.organization",
+    "apps.masterdata",
     "apps.finance",
     "apps.inventory",
     "apps.sales",
