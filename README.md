@@ -1,10 +1,27 @@
-# ERP-Intelligence: Modular ERP Platform
+# ERP-Intelligence
 
-A modular-monolith ERP built on Django/DRF, PostgreSQL, Redis and Celery, growing in waves toward an
-SAP-style suite: core ERP (Logistics, Financials, HR), then extended operations (CRM, SRM, SCM, PLM)
-and a columnar analytics layer. The full roadmap is in the ERP-Intelligence project (`roadmap/ERP_Roadmap.md`).
+[![CI](https://github.com/mokwenaanthony-dev/ERP-Intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/mokwenaanthony-dev/ERP-Intelligence/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
+![Django](https://img.shields.io/badge/django-5.2%20LTS-0C4B33)
+![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-## Status: Wave 0 (foundation) complete
+A modular ERP platform built on Django/DRF, PostgreSQL, Redis and Celery, growing in tested waves
+toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended operations
+(CRM, SRM, SCM, PLM) and a columnar analytics layer.
+
+## Roadmap
+
+| Wave | Scope | Status |
+|---|---|---|
+| 0 | Foundation: roles and permissions, audit trail, sales orders with stock rules, request logging, tests, CI | Done |
+| 1 | Org structure, Business Partner, Material master, Finance core (Universal Journal, fiscal periods, VAT) | Next |
+| 2 | Stock-movement ledger, Order-to-Cash, Procure-to-Pay | Planned |
+| 3 | HR and payroll posting, cost and profit centres | Planned |
+| 4 | Analytics layer and BI dashboards | Planned |
+| 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
+
+## What Wave 0 delivers
 
 | Area | What exists |
 |---|---|
@@ -111,3 +128,7 @@ apps/
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery
 tests/         pytest suite
 ```
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
