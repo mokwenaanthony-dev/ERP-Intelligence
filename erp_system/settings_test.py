@@ -6,7 +6,7 @@ unless DB_ENGINE is set, which is how CI runs the same tests on PostgreSQL.
 import os
 import tempfile
 
-os.environ.setdefault("DJANGO_SECRET_KEY", "test-only-key-not-for-any-real-environment")  # nosec B105
+os.environ.setdefault("DJANGO_SECRET_KEY", "test-only-key-not-for-any-real-environment")
 os.environ.setdefault("LOG_DIR", os.path.join(tempfile.gettempdir(), "erp_test_logs"))
 
 from .settings import *  # noqa: E402,F401,F403

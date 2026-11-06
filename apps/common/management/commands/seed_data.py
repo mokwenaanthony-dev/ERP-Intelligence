@@ -15,7 +15,7 @@ from apps.sales.models import Customer, SalesOrder, SalesOrderLine
 
 User = get_user_model()
 
-DEFAULT_PASSWORD = "ChangeMe123!"  # nosec B105 - local demo data only
+DEFAULT_PASSWORD = "ChangeMe123!"  # local demo data only  # nosec B105
 
 SEED_USERS = [
     ("admin", Role.ADMIN, {"is_staff": True, "is_superuser": True}),
