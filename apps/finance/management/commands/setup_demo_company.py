@@ -9,7 +9,8 @@ Creates currencies and exchange rates, units of measure, chart of accounts
 location and sales/purchasing organisations, a fiscal year with 12 open
 periods, sample business partners and materials, two sample postings (opening
 capital and a customer invoice with 15% VAT), inventory account determination
-and opening stock in plant 1000 (posted to the journal as well).
+opening stock in plant 1000 (posted to the journal as well), sales prices and
+revenue account determination.
 
 Safe to run more than once: existing records are left alone.
 """
@@ -39,6 +40,7 @@ from apps.organization.models import (
     SalesOrganization,
     StorageLocation,
 )
+from apps.sales.models import RevenueAccountSetting, SalesPrice
 
 ASSET, LIABILITY, EQUITY = GLAccount.AccountType.ASSET, GLAccount.AccountType.LIABILITY, GLAccount.AccountType.EQUITY
 REVENUE, EXPENSE = GLAccount.AccountType.REVENUE, GLAccount.AccountType.EXPENSE
@@ -146,9 +148,15 @@ class Command(BaseCommand):
             InventoryAccountSetting.objects.get_or_create(
                 chart_of_accounts=chart, account_key=key, material_type="", defaults={"gl_account": accounts[number]}
             )
-        SalesOrganization.objects.get_or_create(
+        sales_org, _ = SalesOrganization.objects.get_or_create(
             code="1000", defaults={"name": "Sales South Africa", "company_code": company}
         )
+        output_vat = TaxCode.objects.get(chart_of_accounts=chart, code="O1")
+        for material_type, account in (("", "4000"), ("DIEN", "4100")):
+            RevenueAccountSetting.objects.get_or_create(
+                chart_of_accounts=chart, material_type=material_type,
+                defaults={"revenue_account": accounts[account], "default_tax_code": output_vat},
+            )
         PurchasingOrganization.objects.get_or_create(
             code="1000", defaults={"name": "Purchasing South Africa", "company_code": company}
         )
@@ -174,10 +182,15 @@ class Command(BaseCommand):
         SupplierRole.objects.get_or_create(
             business_partner=supplier, company_code=company, defaults={"reconciliation_account": accounts["2000"]}
         )
-        for number, description in (("TG-1001", "Standard widget"), ("TG-1002", "Deluxe gadget")):
-            Material.objects.get_or_create(
+        for number, description, price in (("TG-1001", "Standard widget", "199.00"),
+                                           ("TG-1002", "Deluxe gadget", "499.00")):
+            material, _ = Material.objects.get_or_create(
                 number=number, defaults={"description": description, "base_unit": units["EA"],
                                          "material_type": Material.MaterialType.TRADING_GOODS},
+            )
+            SalesPrice.objects.get_or_create(
+                material=material, sales_organization=sales_org, valid_from=fy.start_date,
+                defaults={"price": Decimal(price)},
             )
 
         if not JournalEntry.objects.filter(company_code=company, fiscal_year=year).exists():

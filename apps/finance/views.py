@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +7,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import FinanceConfigPermission, FinancePermission
 from apps.common.views import AuditedViewMixin, ProtectedDestroyMixin
+from apps.masterdata.models import BusinessPartner
 from apps.organization.models import CompanyCode
 
 from . import services
@@ -13,6 +16,7 @@ from .serializers import (
     ChartOfAccountsSerializer,
     FiscalYearSerializer,
     GLAccountSerializer,
+    IncomingPaymentSerializer,
     JournalEntryCreateSerializer,
     JournalEntrySerializer,
     PostingPeriodSerializer,
@@ -105,13 +109,17 @@ class JournalEntryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
     serializer_class = JournalEntrySerializer
     permission_classes = [FinancePermission]
 
-    def get_queryset(self):
-        queryset = JournalEntry.objects.select_related(
+    @staticmethod
+    def queryset_for_detail():
+        return JournalEntry.objects.select_related(
             "company_code", "currency", "reversal_of", "reversed_by"
         ).prefetch_related(
             "lines__gl_account", "lines__currency", "lines__local_currency", "lines__business_partner",
             "lines__material", "lines__plant", "lines__tax_code",
         )
+
+    def get_queryset(self):
+        queryset = self.queryset_for_detail()
         params = self.request.query_params
         if params.get("company_code"):
             queryset = queryset.filter(company_code__code=params["company_code"])
@@ -161,3 +169,69 @@ class TrialBalanceView(APIView):
         period_from = _int_param(request, "period_from", 1)
         period_to = _int_param(request, "period_to", 12)
         return Response(services.trial_balance(company_code, year, period_from, period_to))
+
+
+# --- Receivables ------------------------------------------------------------------------
+
+def _company_code(request) -> CompanyCode:
+    company_code = CompanyCode.objects.select_related("currency", "chart_of_accounts").filter(
+        code=request.query_params.get("company_code", "")
+    ).first()
+    if company_code is None:
+        raise serializers.ValidationError({"company_code": "A valid company_code is required."})
+    return company_code
+
+
+class IncomingPaymentView(APIView):
+    """POST /api/finance/incoming-payments/ - post a customer payment and clear open items."""
+
+    permission_classes = [FinancePermission]
+
+    def post(self, request):
+        serializer = IncomingPaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entry = serializer.post(request.user)
+        entry = JournalEntryViewSet.queryset_for_detail().get(pk=entry.pk)
+        data = JournalEntrySerializer(entry).data
+        data["cleared_items"] = [
+            {"line_id": c.item_id, "document_number": c.item.entry.document_number, "amount": c.amount}
+            for c in entry.clearings_made.select_related("item__entry")
+        ]
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class OpenItemsView(APIView):
+    """GET /api/finance/reports/open-items/?company_code=1000[&business_partner=1000001][&include_cleared=true]"""
+
+    permission_classes = [FinancePermission]
+
+    def get(self, request):
+        company_code = _company_code(request)
+        partner = None
+        if request.query_params.get("business_partner"):
+            partner = BusinessPartner.objects.filter(number=request.query_params["business_partner"]).first()
+            if partner is None:
+                raise serializers.ValidationError({"business_partner": "Business partner not found."})
+        include_cleared = request.query_params.get("include_cleared") in ("1", "true", "yes")
+        return Response(services.open_items(company_code, partner=partner, include_cleared=include_cleared))
+
+
+class ReceivablesAgeingView(APIView):
+    """GET /api/finance/reports/receivables-ageing/?company_code=1000[&as_of=2026-11-30]"""
+
+    permission_classes = [FinancePermission]
+
+    def get(self, request):
+        company_code = _company_code(request)
+        as_of = serializers.DateField().to_internal_value(request.query_params["as_of"]) \
+            if request.query_params.get("as_of") else date.today()
+        return Response(services.receivables_ageing(company_code, as_of))
+
+
+class ReceivablesReconciliationView(APIView):
+    """GET /api/finance/reports/receivables-reconciliation/?company_code=1000"""
+
+    permission_classes = [FinancePermission]
+
+    def get(self, request):
+        return Response(services.receivables_reconciliation(_company_code(request)))

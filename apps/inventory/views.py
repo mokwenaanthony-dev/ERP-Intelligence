@@ -1,36 +1,21 @@
-from rest_framework import generics, mixins, serializers, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import FinanceConfigPermission, InventoryPermission
-from apps.common.views import AuditedViewMixin, ProtectedDestroyMixin
+from apps.common.views import AuditedViewMixin
 from apps.finance.serializers import ReverseSerializer
 from apps.masterdata.models import Material
 from apps.organization.models import CompanyCode, Plant
 
 from . import services
-from .models import InventoryAccountSetting, MaterialDocument, Product
+from .models import InventoryAccountSetting, MaterialDocument
 from .serializers import (
     GoodsMovementCreateSerializer,
     InventoryAccountSettingSerializer,
     MaterialDocumentSerializer,
-    ProductSerializer,
 )
-
-
-# --- Legacy (Wave 0) products ---------------------------------------------------------------
-
-class ProductList(AuditedViewMixin, generics.ListCreateAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [InventoryPermission]
-
-
-class ProductDetail(AuditedViewMixin, ProtectedDestroyMixin, generics.RetrieveUpdateDestroyAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [InventoryPermission]
 
 
 # --- Stock ledger ---------------------------------------------------------------------------

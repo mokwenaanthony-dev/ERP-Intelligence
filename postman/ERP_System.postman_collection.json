@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "ERP System",
-    "description": "JWT auth, customers, sales orders (with status changes) and inventory. Run 'Login as sales_rep' first; seed users come from `python manage.py seed_data`. Finance requests need `python manage.py setup_demo_company` first; log in as accountant or finance_manager.",
+    "description": "ERP-Intelligence API. Run `python manage.py seed_data` first, then log in (Auth folder) as the role each folder names.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -36,6 +36,18 @@
     {
       "key": "supplier_bp",
       "value": "1000002"
+    },
+    {
+      "key": "order_id",
+      "value": "1"
+    },
+    {
+      "key": "delivery_id",
+      "value": "1"
+    },
+    {
+      "key": "invoice_id",
+      "value": "1"
     }
   ],
   "item": [
@@ -297,10 +309,10 @@
       ]
     },
     {
-      "name": "Sales",
+      "name": "Sales - order to cash (login as sales_rep)",
       "item": [
         {
-          "name": "List customers",
+          "name": "Price list",
           "request": {
             "method": "GET",
             "header": [
@@ -310,77 +322,21 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/sales/customers/",
+              "raw": "{{base_url}}/api/sales/prices/",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
                 "sales",
-                "customers",
+                "prices",
                 ""
               ]
             }
           }
         },
         {
-          "name": "Create customer",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/sales/customers/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "sales",
-                "customers",
-                ""
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Beta Trading\",\n  \"email\": \"beta@example.com\",\n  \"phone\": \"011 555 0200\"\n}"
-            }
-          }
-        },
-        {
-          "name": "List orders",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/sales/orders/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "sales",
-                "orders",
-                ""
-              ]
-            }
-          }
-        },
-        {
-          "name": "Create order with lines",
+          "name": "1. Create sales order",
           "request": {
             "method": "POST",
             "header": [
@@ -407,7 +363,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customer\": 1,\n  \"lines\": [\n    {\n      \"product\": 1,\n      \"quantity\": 5\n    },\n    {\n      \"product\": 2,\n      \"quantity\": 1,\n      \"unit_price\": \"45.00\"\n    }\n  ]\n}"
+              "raw": "{\n  \"sales_organization\": \"1000\",\n  \"customer\": \"{{customer_bp}}\",\n  \"order_date\": \"2026-05-10\",\n  \"customer_reference\": \"PO-4471\",\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"quantity\": \"10\"\n    },\n    {\n      \"material\": \"TG-1002\",\n      \"quantity\": \"2\"\n    }\n  ]\n}"
             }
           },
           "event": [
@@ -417,6 +373,120 @@
                 "type": "text/javascript",
                 "exec": [
                   "if (pm.response.code === 201) { pm.collectionVariables.set('order_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Confirm order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sales/orders/{{order_id}}/confirm/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "orders",
+                "{{order_id}}",
+                "confirm",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Deliver everything (posts 601 goods issue)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sales/orders/{{order_id}}/deliver/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "orders",
+                "{{order_id}}",
+                "deliver",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_date\": \"2026-05-12\",\n  \"storage_location\": \"0001\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('delivery_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Invoice the delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sales/invoices/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "invoices",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery\": \"{{delivery_id}}\",\n  \"invoice_date\": \"2026-05-15\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('invoice_id', pm.response.json().id); }"
                 ]
               }
             }
@@ -448,111 +518,7 @@
           }
         },
         {
-          "name": "Confirm order (takes stock)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/sales/orders/{{order_id}}/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "sales",
-                "orders",
-                "{{order_id}}",
-                ""
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"CONFIRMED\"\n}"
-            }
-          }
-        },
-        {
-          "name": "Ship order",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/sales/orders/{{order_id}}/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "sales",
-                "orders",
-                "{{order_id}}",
-                ""
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"SHIPPED\"\n}"
-            }
-          }
-        },
-        {
-          "name": "Cancel order (returns stock if confirmed)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/sales/orders/{{order_id}}/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "sales",
-                "orders",
-                "{{order_id}}",
-                ""
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"CANCELLED\"\n}"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Inventory",
-      "item": [
-        {
-          "name": "List products",
+          "name": "List deliveries",
           "request": {
             "method": "GET",
             "header": [
@@ -562,21 +528,46 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/inventory/products/",
+              "raw": "{{base_url}}/api/sales/deliveries/",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
-                "inventory",
-                "products",
+                "sales",
+                "deliveries",
                 ""
               ]
             }
           }
         },
         {
-          "name": "Create product (inventory_manager)",
+          "name": "Get invoice (with open amount)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sales/invoices/{{invoice_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "invoices",
+                "{{invoice_id}}",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel invoice (while unpaid)",
           "request": {
             "method": "POST",
             "header": [
@@ -590,25 +581,98 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/inventory/products/",
+              "raw": "{{base_url}}/api/sales/invoices/{{invoice_id}}/cancel/",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
-                "inventory",
-                "products",
+                "sales",
+                "invoices",
+                "{{invoice_id}}",
+                "cancel",
                 ""
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Hex Bolt M8\",\n  \"sku\": \"BOLT-M8\",\n  \"price\": \"2.50\",\n  \"stock\": 1000\n}"
+              "raw": "{}"
             }
           }
         },
         {
-          "name": "Get product",
+          "name": "Reverse delivery (until invoiced)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sales/deliveries/{{delivery_id}}/reverse/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "deliveries",
+                "{{delivery_id}}",
+                "reverse",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Receivables (login as accountant)",
+      "item": [
+        {
+          "name": "5. Incoming payment (clears oldest first)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/incoming-payments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "incoming-payments",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"customer\": \"{{customer_bp}}\",\n  \"payment_date\": \"2026-06-10\",\n  \"amount\": \"3436.20\",\n  \"bank_account\": \"1000\",\n  \"reference\": \"EFT-991\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Customer open items",
           "request": {
             "method": "GET",
             "header": [
@@ -618,16 +682,92 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/inventory/products/1/",
+              "raw": "{{base_url}}/api/finance/reports/open-items/?company_code=1000&business_partner={{customer_bp}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
-                "inventory",
-                "products",
-                "1",
+                "finance",
+                "reports",
+                "open-items",
                 ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "business_partner",
+                  "value": "{{customer_bp}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Receivables ageing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/reports/receivables-ageing/?company_code=1000&as_of=2026-07-31",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "reports",
+                "receivables-ageing",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "as_of",
+                  "value": "2026-07-31"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Receivables reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/reports/receivables-reconciliation/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "reports",
+                "receivables-reconciliation",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
               ]
             }
           }

@@ -1,10 +1,11 @@
-from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from . import views
 
-urlpatterns = [
-    path("customers/", views.CustomerList.as_view(), name="customer-list"),
-    path("customers/<int:pk>/", views.CustomerDetail.as_view(), name="customer-detail"),
-    path("orders/", views.SalesOrderList.as_view(), name="sales-order-list"),
-    path("orders/<int:pk>/", views.SalesOrderDetail.as_view(), name="sales-order-detail"),
-]
+router = DefaultRouter()
+router.register("prices", views.SalesPriceViewSet, basename="sales-price")
+router.register("orders", views.SalesOrderViewSet, basename="sales-order")
+router.register("deliveries", views.DeliveryViewSet, basename="delivery")
+router.register("invoices", views.InvoiceViewSet, basename="invoice")
+
+urlpatterns = router.urls

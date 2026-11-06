@@ -1,8 +1,8 @@
+"""Django admin: audit fields are filled in, and posted documents are read-only."""
 import pytest
 
 from apps.accounts.models import Role
-from apps.inventory.models import Product
-from apps.sales.models import Customer
+from apps.masterdata.models import BusinessPartner, CustomerRole, Material, UnitOfMeasure
 
 pytestmark = pytest.mark.django_db
 
@@ -15,49 +15,44 @@ def admin_browser(client, make_user):
     return client
 
 
-def test_admin_add_records_creator(admin_browser):
-    response = admin_browser.post(
-        "/admin/inventory/product/add/", {"name": "Admin Bolt", "sku": "AB-1", "price": "3.00", "stock": "7"}
-    )
-    assert response.status_code == 302, response.content[:500]
-    product = Product.objects.get(sku="AB-1")
-    assert product.created_by == admin_browser.user
-    assert product.updated_by == admin_browser.user
+def test_admin_add_and_change_record_who_did_it(demo, admin_browser, make_user):
+    unit = UnitOfMeasure.objects.get(code="EA")
+    payload = {"number": "AD-1", "description": "Admin item", "material_type": "HAWA", "base_unit": unit.pk,
+               "material_group": "", "is_active": "on"}
+    assert admin_browser.post("/admin/masterdata/material/add/", payload).status_code == 302
+    material = Material.objects.get(number="AD-1")
+    assert material.created_by == material.updated_by == admin_browser.user
 
-
-def test_admin_change_keeps_creator(admin_browser, make_user, widget):
     original = make_user(Role.INVENTORY_MANAGER, username="original")
-    Product.objects.filter(pk=widget.pk).update(created_by=original)
-    response = admin_browser.post(
-        f"/admin/inventory/product/{widget.pk}/change/",
-        {"name": "Renamed", "sku": "W-1", "price": "10.00", "stock": "100"},
-    )
+    Material.objects.filter(pk=material.pk).update(created_by=original)
+    response = admin_browser.post(f"/admin/masterdata/material/{material.pk}/change/",
+                                  {**payload, "description": "Renamed"})
     assert response.status_code == 302
-    widget.refresh_from_db()
-    assert widget.created_by == original
-    assert widget.updated_by == admin_browser.user
+    material.refresh_from_db()
+    assert (material.created_by, material.updated_by) == (original, admin_browser.user)
 
 
-def test_admin_order_inline_lines_get_audit_fields(admin_browser, customer, widget):
+def test_admin_inline_roles_get_audit_fields(demo, admin_browser):
     data = {
-        "customer": customer.pk,
-        "lines-TOTAL_FORMS": "1",
-        "lines-INITIAL_FORMS": "0",
-        "lines-MIN_NUM_FORMS": "0",
-        "lines-MAX_NUM_FORMS": "1000",
-        "lines-0-product": widget.pk,
-        "lines-0-quantity": "4",
+        "category": "ORGANIZATION", "name": "Inline Traders", "country": "ZA",
+        "customer_roles-TOTAL_FORMS": "1", "customer_roles-INITIAL_FORMS": "0",
+        "customer_roles-MIN_NUM_FORMS": "0", "customer_roles-MAX_NUM_FORMS": "1000",
+        "customer_roles-0-company_code": demo.company.pk,
+        "customer_roles-0-reconciliation_account": demo.account("1100").pk,
+        "customer_roles-0-payment_terms_days": "30", "customer_roles-0-credit_limit": "0",
+        "supplier_roles-TOTAL_FORMS": "0", "supplier_roles-INITIAL_FORMS": "0",
+        "supplier_roles-MIN_NUM_FORMS": "0", "supplier_roles-MAX_NUM_FORMS": "1000",
     }
-    response = admin_browser.post("/admin/sales/salesorder/add/", data)
-    assert response.status_code == 302, response.content[:2000]
-    order = customer.orders.get()
-    line = order.lines.get()
-    assert line.created_by == admin_browser.user
-    assert line.unit_price == widget.price
+    response = admin_browser.post("/admin/masterdata/businesspartner/add/", data)
+    assert response.status_code == 302, response.content[:3000]
+    role = CustomerRole.objects.get(business_partner=BusinessPartner.objects.get(name="Inline Traders"))
+    assert role.created_by == admin_browser.user
 
 
-def test_admin_list_pages_render(admin_browser, pending_order):
-    for url in ("/admin/inventory/product/", "/admin/sales/salesorder/", "/admin/sales/customer/",
-                "/admin/accounts/user/"):
-        assert admin_browser.get(url).status_code == 200, url
-    assert Customer.objects.exists()
+def test_sales_admin_pages_are_read_only(demo, admin_browser):
+    for path in ("salesorder", "delivery", "invoice", "salesprice", "revenueaccountsetting"):
+        assert admin_browser.get(f"/admin/sales/{path}/").status_code == 200, path
+    for path in ("salesorder", "delivery", "invoice"):
+        assert admin_browser.get(f"/admin/sales/{path}/add/").status_code == 403, path
+    assert admin_browser.get("/admin/finance/openitemclearing/").status_code == 200
+    assert admin_browser.get("/admin/accounts/user/").status_code == 200

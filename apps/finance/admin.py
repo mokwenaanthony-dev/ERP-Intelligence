@@ -2,7 +2,16 @@ from django.contrib import admin
 
 from apps.common.admin import AuditedAdminMixin
 
-from .models import ChartOfAccounts, FiscalYear, GLAccount, JournalEntry, JournalLine, PostingPeriod, TaxCode
+from .models import (
+    ChartOfAccounts,
+    FiscalYear,
+    GLAccount,
+    JournalEntry,
+    JournalLine,
+    OpenItemClearing,
+    PostingPeriod,
+    TaxCode,
+)
 
 
 @admin.register(ChartOfAccounts)
@@ -63,6 +72,22 @@ class JournalEntryAdmin(admin.ModelAdmin):
     list_filter = ("company_code", "fiscal_year", "document_type", "status")
     search_fields = ("document_number", "reference", "header_text")
     inlines = [JournalLineInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OpenItemClearing)
+class OpenItemClearingAdmin(admin.ModelAdmin):
+    """Read-only record of which payment cleared which open item."""
+
+    list_display = ("clearing_entry", "item", "amount", "created_at")
 
     def has_add_permission(self, request):
         return False

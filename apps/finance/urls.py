@@ -13,5 +13,10 @@ router.register("journal-entries", views.JournalEntryViewSet, basename="journal-
 
 urlpatterns = [
     path("reports/trial-balance/", views.TrialBalanceView.as_view(), name="trial-balance"),
+    path("incoming-payments/", views.IncomingPaymentView.as_view(), name="incoming-payment"),
+    path("reports/open-items/", views.OpenItemsView.as_view(), name="open-items"),
+    path("reports/receivables-ageing/", views.ReceivablesAgeingView.as_view(), name="receivables-ageing"),
+    path("reports/receivables-reconciliation/", views.ReceivablesReconciliationView.as_view(),
+         name="receivables-reconciliation"),
     *router.urls,
 ]

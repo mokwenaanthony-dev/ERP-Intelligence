@@ -105,3 +105,19 @@ FinanceConfigPermission = RolePermission.build(
     write=(Role.FINANCE_MANAGER,),
     read=(Role.ACCOUNTANT,),
 )
+
+# --- Wave 2b -------------------------------------------------------------------
+
+# Deliveries are created from sales orders; the warehouse can also reverse them.
+DeliveryPermission = RolePermission.build(
+    "DeliveryPermission",
+    write=(Role.SALES_REP, Role.INVENTORY_MANAGER),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.VIEWER),
+)
+
+# Billing: sales raises invoices; finance can raise and cancel them too.
+BillingPermission = RolePermission.build(
+    "BillingPermission",
+    write=(Role.SALES_REP, Role.ACCOUNTANT, Role.FINANCE_MANAGER),
+    read=(Role.VIEWER,),
+)

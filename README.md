@@ -17,8 +17,8 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 | 0 | Foundation: roles and permissions, audit trail, sales orders with stock rules, request logging, tests, CI | Done |
 | 1 | Org structure, Business Partner, Material master, Finance core (Universal Journal, fiscal periods, VAT) | Done |
 | 2a | Stock-movement ledger: movement types, moving-average valuation, automatic journal postings, stock reconciliation | Done |
-| 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment | Next |
-| 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment | Planned |
+| 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment, open items and ageing | Done |
+| 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment | Next |
 | 3 | HR and payroll posting, cost and profit centres | Planned |
 | 4 | Analytics layer and BI dashboards | Planned |
 | 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
@@ -30,8 +30,7 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 | Identity | Custom `User` with 8 roles; JWT login, refresh and logout (blacklist) |
 | Access control | One permission class per module with read and write role lists (matrix below) |
 | Audit | Every record has `created_at`, `updated_at`, `created_by`, `updated_by`, filled automatically by the API and the admin |
-| Inventory | Products with non-negative stock and price; products used on orders cannot be deleted (409) |
-| Sales | Customers; sales orders with lines, price captured at time of sale, status rules, stock checks |
+| Inventory and sales | Simple products, customers and orders (retired in Wave 2b; see release `v0.1.0`) |
 | Telemetry | `OperationalPerformanceMiddleware`: one line per request to stdout and a rotating 10 MB x 5 file. Paths only, never query strings or bodies |
 | Ops | `/api/health/`, gunicorn + WhiteNoise, non-root Docker image with healthcheck, Compose stack |
 | Quality | pytest suite with an 80% coverage floor; GitHub Actions: flake8, bandit, pip-audit, migrations check, tests on PostgreSQL, Docker build |
@@ -98,39 +97,58 @@ POST /api/inventory/goods-movements/
 Creates material document `MD00000002` and journal entry `WE00000002` (Dr 1200 Inventory R7,500 /
 Cr 2300 GR/IR clearing R7,500). The moving average price of TG-1001 moves from R120 to R130.
 
-Purchasing and HR are empty apps reserved for Waves 2c and 3. The Wave 0 sales `Customer` and inventory
-`Product` are replaced by Business Partner and Material in Wave 2b.
+## What Wave 2b delivers
+
+```
+Sales order --> Delivery --------------> Invoice --------------------------> Payment
+ (prices,       601 goods issue:          Dr Receivables (gross)             Dr Bank
+  VAT code)     Dr Cost of sales          Cr Revenue (net) / Cr VAT output   Cr Receivables
+                Cr Inventory (moving avg)                                     clears the open item
+```
+
+| Area | What exists |
+|---|---|
+| Pricing | Sales prices per material and sales organisation with validity dates; manual price override flagged on the item |
+| Sales orders | On Business Partner (customer role) and Material; VAT code defaulted per material type; OPEN (editable) -> CONFIRMED -> COMPLETED, or CANCELLED; delivered and invoiced quantities derived from the documents |
+| Deliveries | Full or partial, per plant; post a 601 goods issue that books cost of sales at moving average; reversible until invoiced |
+| Invoices | One per delivery: receivable (gross), revenue (net) and output VAT per item, due date from the customer's payment terms; cancellable while unpaid |
+| Payments and open items | Incoming payments clear receivables (explicitly or oldest first, partial allowed); reversing a payment re-opens its items; open-item list per customer |
+| Reports | Receivables ageing (not due, 1-30, 31-60, 61-90, over 90 days) and a receivables-to-ledger reconciliation |
+| Numbering | `SO`, `DL` and `IN` numbers run continuously per company code; accounting documents keep their yearly `WA`, `DR`, `DZ` ranges |
+
+The Wave 0 sales `Customer`/`SalesOrder` and inventory `Product` models were retired in this wave
+(migration `sales/0002_retire_wave0_sales_models`). Purchasing and HR are reserved for Waves 2c and 3.
+
+### Order to cash in five calls
+
+```http
+POST /api/sales/orders/                     {"sales_organization": "1000", "customer": "1000001", "order_date": "2026-05-10",
+                                             "items": [{"material": "TG-1001", "quantity": "10"}, {"material": "TG-1002", "quantity": "2"}]}
+POST /api/sales/orders/1/confirm/
+POST /api/sales/orders/1/deliver/           {"delivery_date": "2026-05-12", "storage_location": "0001"}
+POST /api/sales/invoices/                   {"delivery": 1, "invoice_date": "2026-05-15"}
+POST /api/finance/incoming-payments/        {"company_code": "1000", "customer": "1000001", "payment_date": "2026-06-10",
+                                             "amount": "3436.20", "bank_account": "1000"}
+```
+
+Result: order `SO00000001` (R2,988.00 net), delivery `DL00000001` with goods issue `WA00000001`
+(cost of sales R1,800), invoice `IN00000001` / `DR00000002` (R2,988.00 + R448.20 VAT = R3,436.20),
+payment `DZ00000001` clearing the oldest open items first.
 
 ## Role matrix
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close), currencies and rates, business partners | sales, inventory |
-| Accountant | journal entries, business partners | finance configuration, sales, inventory |
-| Sales Representative | sales (orders, customers), business partners | inventory (catalogue) |
-| Inventory Manager | inventory (products, goods movements), materials | - |
+| Finance Manager | finance (incl. configuration, period open/close, payments), invoices, currencies and rates, business partners | sales orders, deliveries, inventory |
+| Accountant | journal entries, payments, invoices, business partners | finance configuration, sales orders, deliveries, inventory |
+| Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
+| Inventory Manager | goods movements, delivery reversal, materials | deliveries |
 | Purchasing Officer | purchasing, business partners, materials | inventory |
 | HR Admin | hr | - |
-| Viewer | - | sales, inventory |
+| Viewer | - | sales orders, deliveries, invoices, inventory |
 | Administrator / superuser | everything, including organisation structure | - |
 
 Every signed-in user can read organisation structure and master data.
-
-## Sales order rules
-
-```
-PENDING --> CONFIRMED --> SHIPPED
-   |            |
-   +--> CANCELLED <--+
-```
-
-- Confirming takes the ordered quantities out of stock, or fails with the list of shortages and changes nothing.
-- Cancelling a confirmed order puts the stock back.
-- Lines and customer can only change while the order is PENDING.
-- Orders are never deleted; cancel them instead.
-- Order and lines are saved in one database transaction.
-
-Change status with `PATCH /api/sales/orders/<id>/ {"status": "CONFIRMED"}`.
 
 ## API
 
@@ -140,12 +158,15 @@ Change status with `PATCH /api/sales/orders/<id>/ {"status": "CONFIRMED"}`.
 | POST | `/api/auth/token/` | `{"username", "password"}` gives `access` + `refresh` |
 | POST | `/api/auth/token/refresh/` | `{"refresh"}` |
 | POST | `/api/auth/logout/` | `{"refresh"}`, blacklists it |
-| GET, POST | `/api/inventory/products/` | |
-| GET, PUT, PATCH, DELETE | `/api/inventory/products/<id>/` | |
-| GET, POST | `/api/sales/customers/` | |
-| GET, PUT, PATCH, DELETE | `/api/sales/customers/<id>/` | |
-| GET, POST | `/api/sales/orders/` | Lines can be sent in the same request |
-| GET, PUT, PATCH | `/api/sales/orders/<id>/` | No DELETE |
+| CRUD | `/api/sales/prices/` | `?material=` |
+| GET, POST | `/api/sales/orders/` | Filters `status`, `customer` |
+| GET, PATCH | `/api/sales/orders/<id>/` | PATCH `{"items": [...]}` replaces items while OPEN; no PUT or DELETE |
+| POST | `/api/sales/orders/<id>/confirm/`, `/cancel/` | |
+| POST | `/api/sales/orders/<id>/deliver/` | `{"delivery_date", "storage_location"}` or `{"delivery_date", "items": [{"item_number", "quantity", "storage_location"}]}` |
+| GET | `/api/sales/deliveries/` | `?sales_order=` |
+| POST | `/api/sales/deliveries/<id>/reverse/` | Until invoiced |
+| GET, POST | `/api/sales/invoices/` | POST `{"delivery", "invoice_date"}`; filters `customer`, `status` |
+| POST | `/api/sales/invoices/<id>/cancel/` | While unpaid |
 | CRUD | `/api/org/company-codes/<code>/`, `plants/<code>/`, `storage-locations/`, `sales-organizations/<code>/`, `purchasing-organizations/<code>/` | |
 | CRUD | `/api/masterdata/currencies/<code>/`, `exchange-rates/`, `units/<code>/` | |
 | CRUD | `/api/masterdata/business-partners/<number>/` | `?search=` by name; number assigned by the system |
@@ -158,6 +179,10 @@ Change status with `PATCH /api/sales/orders/<id>/ {"status": "CONFIRMED"}`.
 | GET, POST | `/api/finance/journal-entries/` | POST posts; filters `company_code`, `fiscal_year`, `period`, `document_type`, `status` |
 | POST | `/api/finance/journal-entries/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/finance/reports/trial-balance/` | `?company_code=1000&fiscal_year=2027[&period_from=&period_to=]` |
+| POST | `/api/finance/incoming-payments/` | Optional `allocations: [{"line_id", "amount"}]`; otherwise oldest first |
+| GET | `/api/finance/reports/open-items/` | `?company_code=&business_partner=&include_cleared=` |
+| GET | `/api/finance/reports/receivables-ageing/` | `?company_code=&as_of=` |
+| GET | `/api/finance/reports/receivables-reconciliation/` | `?company_code=` |
 | GET, POST | `/api/inventory/goods-movements/` | POST posts; filters `plant`, `movement_type`, `material`, `status` |
 | POST | `/api/inventory/goods-movements/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/inventory/stock/` | `?plant=&material=` |
@@ -177,8 +202,7 @@ pip install -r requirements-dev.txt
 
 copy .env.example .env            # macOS/Linux: cp; then set DJANGO_SECRET_KEY
 python manage.py migrate
-python manage.py seed_data            # one user per role, password ChangeMe123!
-python manage.py setup_demo_company   # company 1000: finance set-up, sample postings, opening stock
+python manage.py seed_data            # one user per role (password ChangeMe123!) + demo company 1000
 python manage.py runserver
 ```
 
@@ -187,7 +211,6 @@ Full stack (PostgreSQL, Redis, Celery) with Docker:
 ```bash
 docker compose up --build
 docker compose exec web python manage.py seed_data
-docker compose exec web python manage.py setup_demo_company
 ```
 
 ## Test and check
@@ -210,12 +233,11 @@ apps/
   common/      Audit base models, middleware, shared view/admin mixins, seed_data
   organization/  Company codes, plants, storage locations, sales and purchasing organisations
   masterdata/  Currencies, exchange rates, units, Business Partner and roles, Material master
-  finance/     Chart of accounts, fiscal calendar, tax codes, Universal Journal;
-               services.py holds the posting rules; setup_demo_company command
-  inventory/   Stock ledger: material documents, valuation, account determination;
-               services.py holds the movement rules (plus the Wave 0 Product)
-  sales/       Customers, orders, lines; services.py holds the order rules
-  purchasing/ hr/    Reserved for Waves 2-3
+  finance/     Chart of accounts, fiscal calendar, tax codes, Universal Journal, open items and
+               payments; services.py holds the posting rules; setup_demo_company command
+  inventory/   Stock ledger: material documents, valuation, account determination
+  sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
+  purchasing/ hr/    Reserved for Waves 2c and 3
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery
 tests/         pytest suite
 ```

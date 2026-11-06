@@ -9,32 +9,12 @@ Wave 2a adds a stock-movement ledger modelled on SAP inventory management:
 * ``InventoryAccountSetting`` - account determination: which G/L accounts a
   movement posts to. Every value-changing movement posts a journal entry.
 
-``Product`` is the simple Wave 0 catalogue used by the current sales orders. It is
-replaced by ``masterdata.Material`` when order-to-cash is rebuilt in Wave 2b.
+Materials come from ``masterdata.Material``; the Wave 0 ``Product`` catalogue was retired in Wave 2b.
 """
 from django.db import models
 
 from apps.common.models import AuditedModel
 from apps.finance.models import ImmutableModel
-
-
-class Product(AuditedModel):
-    """Legacy (Wave 0) catalogue item with a single on-hand quantity. Superseded by Material in Wave 2b."""
-
-    name = models.CharField(max_length=200)
-    sku = models.CharField(max_length=50, unique=True)
-    price = models.DecimalField(max_digits=12, decimal_places=2)
-    stock = models.IntegerField(default=0)
-
-    class Meta:
-        ordering = ["sku"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(stock__gte=0), name="product_stock_non_negative"),
-            models.CheckConstraint(condition=models.Q(price__gte=0), name="product_price_non_negative"),
-        ]
-
-    def __str__(self):
-        return f"{self.name} ({self.sku})"
 
 
 class MovementType(models.TextChoices):

@@ -286,3 +286,26 @@ class JournalLine(ImmutableModel):
 
     def __str__(self):
         return f"{self.entry} line {self.line_number}: {self.gl_account.number} {self.amount}"
+
+
+class OpenItemClearing(models.Model):
+    """Links a payment (the clearing document) to the receivable or payable line it settles.
+
+    An open item is a journal line on a reconciliation account; its open amount is the line
+    amount minus the clearings made by documents that are still posted. Reversing a payment
+    therefore re-opens the items it cleared.
+    """
+
+    item = models.ForeignKey(JournalLine, on_delete=models.PROTECT, related_name="clearings")
+    clearing_entry = models.ForeignKey(JournalEntry, on_delete=models.PROTECT, related_name="clearings_made")
+    amount = models.DecimalField(max_digits=18, decimal_places=2, help_text="Amount settled, always positive.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="clearing_amount_positive"),
+        ]
+
+    def __str__(self):
+        return f"{self.clearing_entry} clears {self.amount} of {self.item}"

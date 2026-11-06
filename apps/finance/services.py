@@ -6,7 +6,7 @@ Purchasing and Inventory.
 """
 import calendar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
@@ -21,6 +21,7 @@ from .models import (
     JournalEntry,
     JournalLine,
     NumberRange,
+    OpenItemClearing,
     PostingPeriod,
     TaxCode,
 )
@@ -306,3 +307,176 @@ def trial_balance(company_code, fiscal_year: int, period_from: int = 1, period_t
         "period_from": period_from, "period_to": period_to, "accounts": accounts,
         "total_debit": total_debit, "total_credit": total_credit, "balanced": total_debit == total_credit,
     }
+
+
+# --- Open items, payments and receivables ----------------------------------------------
+
+def _recon_sign(reconciliation_type) -> int:
+    """Receivables are debit items (+), payables are credit items (-)."""
+    return 1 if reconciliation_type == GLAccount.ReconciliationType.CUSTOMER else -1
+
+
+def open_items(company_code, *, reconciliation_type=GLAccount.ReconciliationType.CUSTOMER, partner=None,
+               include_cleared=False) -> list[dict]:
+    """Receivable (or payable) line items with their open amount, oldest first.
+
+    Lines of reversed documents and of reversal documents are not open items: the two cancel out.
+    """
+    side = {"amount__gt": 0} if _recon_sign(reconciliation_type) > 0 else {"amount__lt": 0}
+    lines = (
+        JournalLine.objects.select_related("entry", "business_partner", "gl_account")
+        .filter(
+            company_code=company_code, gl_account__reconciliation_type=reconciliation_type,
+            entry__status=JournalEntry.Status.POSTED, entry__reversal_of__isnull=True, **side,
+        )
+        .order_by("posting_date", "id")
+    )
+    if partner is not None:
+        lines = lines.filter(business_partner=partner)
+
+    cleared = dict(
+        OpenItemClearing.objects.filter(
+            item__in=lines, clearing_entry__status=JournalEntry.Status.POSTED,
+            clearing_entry__reversal_of__isnull=True,
+        ).values("item").annotate(total=Sum("amount")).values_list("item", "total")
+    )
+    terms = _payment_terms(company_code, reconciliation_type)
+    result = []
+    for line in lines:
+        original = abs(line.amount_local)
+        cleared_amount = Decimal(cleared.get(line.pk) or 0).quantize(CENT)
+        open_amount = original - cleared_amount
+        if open_amount <= 0 and not include_cleared:
+            continue
+        days = terms.get(line.business_partner_id, 30)
+        result.append({
+            "line_id": line.pk, "document_number": line.entry.document_number,
+            "document_type": line.entry.document_type,
+            "reference": line.entry.reference, "posting_date": line.posting_date,
+            "due_date": line.posting_date + timedelta(days=days),
+            "business_partner": line.business_partner.number if line.business_partner else None,
+            "business_partner_name": line.business_partner.name if line.business_partner else None,
+            "gl_account": line.gl_account.number, "amount": original, "cleared": cleared_amount,
+            "open_amount": open_amount,
+        })
+    return result
+
+
+def _payment_terms(company_code, reconciliation_type) -> dict:
+    from apps.masterdata.models import CustomerRole, SupplierRole
+
+    model = CustomerRole if reconciliation_type == GLAccount.ReconciliationType.CUSTOMER else SupplierRole
+    return dict(model.objects.filter(company_code=company_code).values_list("business_partner", "payment_terms_days"))
+
+
+@transaction.atomic
+def post_incoming_payment(*, company_code, customer, payment_date: date, amount: Decimal, bank_account: GLAccount,
+                          allocations: list[tuple[int, Decimal]] | None = None, reference: str = "",
+                          header_text: str = "", user=None) -> JournalEntry:
+    """Post a customer payment (Dr bank / Cr receivables) and clear the open items it pays.
+
+    ``allocations`` is a list of (open item line id, amount). Without it, the payment clears the
+    customer's oldest items first. The whole amount must be allocated.
+    """
+    from apps.masterdata.models import CustomerRole
+
+    amount = Decimal(amount).quantize(CENT)
+    if amount <= 0:
+        raise PostingError("The payment amount must be greater than zero.")
+    role = CustomerRole.objects.select_related("reconciliation_account").filter(
+        business_partner=customer, company_code=company_code
+    ).first()
+    if role is None:
+        raise PostingError(f"Business partner {customer.number} is not a customer of {company_code.code}.")
+    if bank_account.reconciliation_type != GLAccount.ReconciliationType.NONE:
+        raise PostingError(f"Account {bank_account.number} cannot be used as the bank account.")
+
+    # Lock the customer's items so two payments cannot clear the same invoice at once.
+    list(JournalLine.objects.select_for_update(of=("self",)).filter(
+        company_code=company_code, business_partner=customer, gl_account__reconciliation_type="CUSTOMER"
+    ).values_list("pk", flat=True))
+    items = {item["line_id"]: item for item in open_items(company_code, partner=customer)}
+
+    if allocations is None:
+        allocations, remaining = [], amount
+        for item in items.values():
+            if remaining <= 0:
+                break
+            part = min(remaining, item["open_amount"])
+            allocations.append((item["line_id"], part))
+            remaining -= part
+    allocations = [(line_id, Decimal(part).quantize(CENT)) for line_id, part in allocations]
+
+    for line_id, part in allocations:
+        item = items.get(line_id)
+        if item is None:
+            raise PostingError(f"Item {line_id} is not an open item of customer {customer.number}.")
+        if part <= 0 or part > item["open_amount"]:
+            raise PostingError(
+                f"Allocation of {part} to {item['document_number']} must be between 0.01 and its open amount "
+                f"{item['open_amount']}."
+            )
+    allocated = sum((part for _, part in allocations), ZERO)
+    if allocated != amount:
+        raise PostingError(f"Payment of {amount} must be fully allocated to open items (allocated {allocated}).")
+
+    entry = post_journal_entry(
+        company_code=company_code, document_type=DocumentType.CUSTOMER_PAYMENT, posting_date=payment_date,
+        reference=reference, header_text=header_text or f"Payment from {customer.name}"[:100], user=user,
+        lines=[
+            LineInput(bank_account, JournalLine.Side.DEBIT, amount, business_partner=customer),
+            LineInput(role.reconciliation_account, JournalLine.Side.CREDIT, amount, business_partner=customer),
+        ],
+    )
+    OpenItemClearing.objects.bulk_create([
+        OpenItemClearing(item_id=line_id, clearing_entry=entry, amount=part) for line_id, part in allocations
+    ])
+    return entry
+
+
+AGEING_BUCKETS = ("not_due", "days_1_30", "days_31_60", "days_61_90", "over_90")
+
+
+def _bucket(days_overdue: int) -> str:
+    if days_overdue <= 0:
+        return "not_due"
+    if days_overdue <= 30:
+        return "days_1_30"
+    if days_overdue <= 60:
+        return "days_31_60"
+    if days_overdue <= 90:
+        return "days_61_90"
+    return "over_90"
+
+
+def receivables_ageing(company_code, as_of: date) -> dict:
+    """Open receivables per customer, split by how many days past the due date they are."""
+    customers = {}
+    totals = dict.fromkeys(AGEING_BUCKETS, ZERO)
+    for item in open_items(company_code):
+        if item["posting_date"] > as_of:
+            continue
+        bucket = _bucket((as_of - item["due_date"]).days)
+        row = customers.setdefault(item["business_partner"], {
+            "business_partner": item["business_partner"], "name": item["business_partner_name"],
+            **dict.fromkeys(AGEING_BUCKETS, ZERO), "total": ZERO,
+        })
+        row[bucket] += item["open_amount"]
+        row["total"] += item["open_amount"]
+        totals[bucket] += item["open_amount"]
+    return {
+        "company_code": company_code.code, "currency": company_code.currency.code, "as_of": as_of,
+        "customers": sorted(customers.values(), key=lambda r: r["business_partner"] or ""),
+        "totals": {**totals, "total": sum(totals.values(), ZERO)},
+    }
+
+
+def receivables_reconciliation(company_code) -> dict:
+    """Sum of open receivable items versus the balance of the receivables reconciliation accounts."""
+    open_total = sum((item["open_amount"] for item in open_items(company_code)), ZERO)
+    ledger = JournalLine.objects.filter(
+        company_code=company_code, gl_account__reconciliation_type=GLAccount.ReconciliationType.CUSTOMER
+    ).aggregate(total=Sum("amount_local"))["total"]
+    ledger = _money(ledger)
+    return {"company_code": company_code.code, "open_items": open_total, "ledger_balance": ledger,
+            "difference": open_total - ledger, "reconciled": open_total == ledger}
