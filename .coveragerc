@@ -1,0 +1,6 @@
+[run]
+omit =
+    */migrations/*
+    erp_system/asgi.py
+    erp_system/wsgi.py
+    erp_system/settings_test.py

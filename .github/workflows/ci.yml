@@ -1,0 +1,71 @@
+# DevSecOps verification gates (design document, section 5):
+# lint -> SAST -> dependency audit -> migrations check -> tests with coverage >= 80% -> Docker build
+name: ERP CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: erp_test
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: erp_test
+      DB_USER: erp
+      DB_PASSWORD: erp
+      DB_HOST: localhost
+      DB_PORT: "5432"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: flake8 .
+
+      - name: Static security scan (bandit)
+        run: bandit -r apps erp_system -ll -x "*/migrations/*"
+
+      # pip-audit checks dependencies against the PyPI/OSV advisory databases
+      # without needing an account (Safety 3 requires one).
+      - name: Dependency vulnerability audit (pip-audit)
+        run: pip-audit -r requirements.txt
+
+      - name: Migrations are up to date
+        run: python manage.py makemigrations --check --dry-run --settings=erp_system.settings_test
+
+      - name: Tests with coverage floor
+        run: pytest
+
+  docker:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t erp-system:ci .
