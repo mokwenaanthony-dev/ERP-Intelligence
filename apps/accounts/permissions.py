@@ -28,6 +28,7 @@ from .models import Role
 class RolePermission(BasePermission):
     read_roles: tuple = ()
     write_roles: tuple = ()
+    read_all: bool = False  # any signed-in user may read (shared master data)
     message = "Your role does not allow this action in this module."
 
     def has_permission(self, request, view):
@@ -37,12 +38,13 @@ class RolePermission(BasePermission):
         if user.is_superuser or user.role == Role.ADMIN:
             return True
         if request.method in SAFE_METHODS:
-            return user.role in self.read_roles or user.role in self.write_roles
+            return self.read_all or user.role in self.read_roles or user.role in self.write_roles
         return user.role in self.write_roles
 
     @classmethod
-    def build(cls, name: str, *, read=(), write=()):
-        return type(name, (cls,), {"read_roles": tuple(read), "write_roles": tuple(write)})
+    def build(cls, name: str, *, read=(), write=(), read_all=False):
+        attrs = {"read_roles": tuple(read), "write_roles": tuple(write), "read_all": read_all}
+        return type(name, (cls,), attrs)
 
 
 FinancePermission = RolePermission.build(
@@ -71,4 +73,35 @@ PurchasingPermission = RolePermission.build(
 HRPermission = RolePermission.build(
     "HRPermission",
     write=(Role.HR_ADMIN,),
+)
+
+# --- Wave 1 -------------------------------------------------------------------
+
+# Organisation structure is configured by administrators; everyone can read it.
+OrganizationPermission = RolePermission.build("OrganizationPermission", read_all=True)
+
+# Currencies, exchange rates and units of measure.
+ReferenceDataPermission = RolePermission.build(
+    "ReferenceDataPermission",
+    write=(Role.FINANCE_MANAGER,),
+    read_all=True,
+)
+
+BusinessPartnerPermission = RolePermission.build(
+    "BusinessPartnerPermission",
+    write=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER),
+    read_all=True,
+)
+
+MaterialPermission = RolePermission.build(
+    "MaterialPermission",
+    write=(Role.INVENTORY_MANAGER, Role.PURCHASING_OFFICER),
+    read_all=True,
+)
+
+# Chart of accounts, G/L accounts, tax codes, fiscal years and period open/close.
+FinanceConfigPermission = RolePermission.build(
+    "FinanceConfigPermission",
+    write=(Role.FINANCE_MANAGER,),
+    read=(Role.ACCOUNTANT,),
 )
