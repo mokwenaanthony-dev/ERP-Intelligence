@@ -9,8 +9,9 @@ Creates currencies and exchange rates, units of measure, chart of accounts
 location and sales/purchasing organisations, a fiscal year with 12 open
 periods, sample business partners and materials, two sample postings (opening
 capital and a customer invoice with 15% VAT), inventory account determination
-opening stock in plant 1000 (posted to the journal as well), sales prices and
-revenue account determination.
+opening stock in plant 1000 (posted to the journal as well), sales prices,
+revenue account determination and the purchasing settings (input VAT, price
+difference account, 5% invoice price tolerance).
 
 Safe to run more than once: existing records are left alone.
 """
@@ -40,6 +41,7 @@ from apps.organization.models import (
     SalesOrganization,
     StorageLocation,
 )
+from apps.purchasing.models import PurchasingAccountSetting
 from apps.sales.models import RevenueAccountSetting, SalesPrice
 
 ASSET, LIABILITY, EQUITY = GLAccount.AccountType.ASSET, GLAccount.AccountType.LIABILITY, GLAccount.AccountType.EQUITY
@@ -67,6 +69,7 @@ ACCOUNTS = [
     ("5000", "Cost of sales", EXPENSE, None),
     ("5100", "Inventory scrapping", EXPENSE, None),
     ("5200", "Inventory differences", EXPENSE, None),
+    ("5300", "Purchase price differences", EXPENSE, None),
     ("6000", "Salaries and wages", EXPENSE, None),
     ("6100", "Rent", EXPENSE, None),
     ("6200", "Utilities", EXPENSE, None),
@@ -159,6 +162,11 @@ class Command(BaseCommand):
             )
         PurchasingOrganization.objects.get_or_create(
             code="1000", defaults={"name": "Purchasing South Africa", "company_code": company}
+        )
+        PurchasingAccountSetting.objects.get_or_create(
+            chart_of_accounts=chart,
+            defaults={"default_tax_code": TaxCode.objects.get(chart_of_accounts=chart, code="I1"),
+                      "price_difference_account": accounts["5300"], "price_tolerance_percent": Decimal("5.00")},
         )
 
         today = date.today()

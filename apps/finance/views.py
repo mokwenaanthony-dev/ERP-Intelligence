@@ -17,6 +17,7 @@ from .serializers import (
     FiscalYearSerializer,
     GLAccountSerializer,
     IncomingPaymentSerializer,
+    OutgoingPaymentSerializer,
     JournalEntryCreateSerializer,
     JournalEntrySerializer,
     PostingPeriodSerializer,
@@ -171,7 +172,7 @@ class TrialBalanceView(APIView):
         return Response(services.trial_balance(company_code, year, period_from, period_to))
 
 
-# --- Receivables ------------------------------------------------------------------------
+# --- Receivables and payables -----------------------------------------------------------
 
 def _company_code(request) -> CompanyCode:
     company_code = CompanyCode.objects.select_related("currency", "chart_of_accounts").filter(
@@ -186,9 +187,10 @@ class IncomingPaymentView(APIView):
     """POST /api/finance/incoming-payments/ - post a customer payment and clear open items."""
 
     permission_classes = [FinancePermission]
+    serializer_class = IncomingPaymentSerializer
 
     def post(self, request):
-        serializer = IncomingPaymentSerializer(data=request.data)
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         entry = serializer.post(request.user)
         entry = JournalEntryViewSet.queryset_for_detail().get(pk=entry.pk)
@@ -200,38 +202,67 @@ class IncomingPaymentView(APIView):
         return Response(data, status=status.HTTP_201_CREATED)
 
 
+class OutgoingPaymentView(IncomingPaymentView):
+    """POST /api/finance/outgoing-payments/ - pay a supplier and clear its open invoices."""
+
+    serializer_class = OutgoingPaymentSerializer
+
+
+RECONCILIATION_TYPES = {"customer": GLAccount.ReconciliationType.CUSTOMER,
+                        "supplier": GLAccount.ReconciliationType.SUPPLIER}
+
+
 class OpenItemsView(APIView):
-    """GET /api/finance/reports/open-items/?company_code=1000[&business_partner=1000001][&include_cleared=true]"""
+    """GET /api/finance/reports/open-items/?company_code=1000[&type=customer|supplier]
+    [&business_partner=1000001][&include_cleared=true]"""
 
     permission_classes = [FinancePermission]
 
     def get(self, request):
         company_code = _company_code(request)
+        kind = request.query_params.get("type", "customer")
+        if kind not in RECONCILIATION_TYPES:
+            raise serializers.ValidationError({"type": "Use customer or supplier."})
         partner = None
         if request.query_params.get("business_partner"):
             partner = BusinessPartner.objects.filter(number=request.query_params["business_partner"]).first()
             if partner is None:
                 raise serializers.ValidationError({"business_partner": "Business partner not found."})
         include_cleared = request.query_params.get("include_cleared") in ("1", "true", "yes")
-        return Response(services.open_items(company_code, partner=partner, include_cleared=include_cleared))
+        return Response(services.open_items(company_code, reconciliation_type=RECONCILIATION_TYPES[kind],
+                                            partner=partner, include_cleared=include_cleared))
 
 
 class ReceivablesAgeingView(APIView):
     """GET /api/finance/reports/receivables-ageing/?company_code=1000[&as_of=2026-11-30]"""
 
     permission_classes = [FinancePermission]
+    report = staticmethod(services.receivables_ageing)
 
     def get(self, request):
         company_code = _company_code(request)
         as_of = serializers.DateField().to_internal_value(request.query_params["as_of"]) \
             if request.query_params.get("as_of") else date.today()
-        return Response(services.receivables_ageing(company_code, as_of))
+        return Response(type(self).report(company_code, as_of))
+
+
+class PayablesAgeingView(ReceivablesAgeingView):
+    """GET /api/finance/reports/payables-ageing/?company_code=1000[&as_of=2026-11-30]"""
+
+    report = staticmethod(services.payables_ageing)
 
 
 class ReceivablesReconciliationView(APIView):
     """GET /api/finance/reports/receivables-reconciliation/?company_code=1000"""
 
     permission_classes = [FinancePermission]
+    report = staticmethod(services.receivables_reconciliation)
 
     def get(self, request):
-        return Response(services.receivables_reconciliation(_company_code(request)))
+        return Response(type(self).report(_company_code(request)))
+
+
+class PayablesReconciliationView(ReceivablesReconciliationView):
+    """GET /api/finance/reports/payables-reconciliation/?company_code=1000"""
+
+    report = staticmethod(services.payables_reconciliation)

@@ -11,13 +11,13 @@ design document:
 =================  ==========================  ===================================
 Role               Writes                      Reads only
 =================  ==========================  ===================================
-Finance Manager    finance                     sales, inventory
-Accountant         finance                     sales, inventory
+Finance Manager    finance, supplier invoices  sales, inventory, purchasing
+Accountant         finance, supplier invoices  sales, inventory, purchasing
 Sales Rep          sales (orders, customers)   inventory (catalogue lookup)
-Inventory Manager  inventory                   -
-Purchasing Officer purchasing                  inventory
+Inventory Manager  inventory, goods receipts   purchase orders
+Purchasing Officer purchasing, goods receipts  inventory, supplier invoices
 HR Admin           hr                          -
-Viewer             -                           sales, inventory
+Viewer             -                           sales, inventory, purchasing
 =================  ==========================  ===================================
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -67,7 +67,7 @@ InventoryPermission = RolePermission.build(
 PurchasingPermission = RolePermission.build(
     "PurchasingPermission",
     write=(Role.PURCHASING_OFFICER,),
-    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER, Role.VIEWER),
 )
 
 HRPermission = RolePermission.build(
@@ -120,4 +120,20 @@ BillingPermission = RolePermission.build(
     "BillingPermission",
     write=(Role.SALES_REP, Role.ACCOUNTANT, Role.FINANCE_MANAGER),
     read=(Role.VIEWER,),
+)
+
+# --- Wave 2c -------------------------------------------------------------------
+
+# Goods receipts: the warehouse books what arrived; purchasing can too.
+GoodsReceiptPermission = RolePermission.build(
+    "GoodsReceiptPermission",
+    write=(Role.INVENTORY_MANAGER, Role.PURCHASING_OFFICER),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.VIEWER),
+)
+
+# Supplier invoices (accounts payable) and the GR/IR report: finance posts, purchasing can look.
+SupplierInvoicePermission = RolePermission.build(
+    "SupplierInvoicePermission",
+    write=(Role.ACCOUNTANT, Role.FINANCE_MANAGER),
+    read=(Role.PURCHASING_OFFICER, Role.VIEWER),
 )

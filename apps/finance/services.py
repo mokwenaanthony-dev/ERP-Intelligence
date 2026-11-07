@@ -369,33 +369,40 @@ def _payment_terms(company_code, reconciliation_type) -> dict:
     return dict(model.objects.filter(company_code=company_code).values_list("business_partner", "payment_terms_days"))
 
 
+def _partner_role(company_code, partner, reconciliation_type):
+    from apps.masterdata.models import CustomerRole, SupplierRole
+
+    customer = reconciliation_type == GLAccount.ReconciliationType.CUSTOMER
+    model = CustomerRole if customer else SupplierRole
+    role = model.objects.select_related("reconciliation_account").filter(
+        business_partner=partner, company_code=company_code
+    ).first()
+    if role is None:
+        kind = "customer" if customer else "supplier"
+        raise PostingError(f"Business partner {partner.number} is not a {kind} of {company_code.code}.")
+    return role
+
+
 @transaction.atomic
-def post_incoming_payment(*, company_code, customer, payment_date: date, amount: Decimal, bank_account: GLAccount,
-                          allocations: list[tuple[int, Decimal]] | None = None, reference: str = "",
-                          header_text: str = "", user=None) -> JournalEntry:
-    """Post a customer payment (Dr bank / Cr receivables) and clear the open items it pays.
-
-    ``allocations`` is a list of (open item line id, amount). Without it, the payment clears the
-    customer's oldest items first. The whole amount must be allocated.
-    """
-    from apps.masterdata.models import CustomerRole
-
+def _post_partner_payment(*, reconciliation_type, company_code, partner, payment_date: date, amount: Decimal,
+                          bank_account: GLAccount, allocations, reference: str, header_text: str,
+                          user) -> JournalEntry:
+    """Shared rules for incoming (customer) and outgoing (supplier) payments."""
+    customer = reconciliation_type == GLAccount.ReconciliationType.CUSTOMER
     amount = Decimal(amount).quantize(CENT)
     if amount <= 0:
         raise PostingError("The payment amount must be greater than zero.")
-    role = CustomerRole.objects.select_related("reconciliation_account").filter(
-        business_partner=customer, company_code=company_code
-    ).first()
-    if role is None:
-        raise PostingError(f"Business partner {customer.number} is not a customer of {company_code.code}.")
+    role = _partner_role(company_code, partner, reconciliation_type)
     if bank_account.reconciliation_type != GLAccount.ReconciliationType.NONE:
         raise PostingError(f"Account {bank_account.number} cannot be used as the bank account.")
 
-    # Lock the customer's items so two payments cannot clear the same invoice at once.
+    # Lock the partner's items so two payments cannot clear the same invoice at once.
     list(JournalLine.objects.select_for_update(of=("self",)).filter(
-        company_code=company_code, business_partner=customer, gl_account__reconciliation_type="CUSTOMER"
+        company_code=company_code, business_partner=partner, gl_account__reconciliation_type=reconciliation_type
     ).values_list("pk", flat=True))
-    items = {item["line_id"]: item for item in open_items(company_code, partner=customer)}
+    items = {item["line_id"]: item for item in open_items(
+        company_code, reconciliation_type=reconciliation_type, partner=partner
+    )}
 
     if allocations is None:
         allocations, remaining = [], amount
@@ -407,10 +414,11 @@ def post_incoming_payment(*, company_code, customer, payment_date: date, amount:
             remaining -= part
     allocations = [(line_id, Decimal(part).quantize(CENT)) for line_id, part in allocations]
 
+    kind = "customer" if customer else "supplier"
     for line_id, part in allocations:
         item = items.get(line_id)
         if item is None:
-            raise PostingError(f"Item {line_id} is not an open item of customer {customer.number}.")
+            raise PostingError(f"Item {line_id} is not an open item of {kind} {partner.number}.")
         if part <= 0 or part > item["open_amount"]:
             raise PostingError(
                 f"Allocation of {part} to {item['document_number']} must be between 0.01 and its open amount "
@@ -420,18 +428,50 @@ def post_incoming_payment(*, company_code, customer, payment_date: date, amount:
     if allocated != amount:
         raise PostingError(f"Payment of {amount} must be fully allocated to open items (allocated {allocated}).")
 
+    debit, credit = JournalLine.Side.DEBIT, JournalLine.Side.CREDIT
+    if customer:  # money in: Dr bank / Cr receivables
+        document_type, text = DocumentType.CUSTOMER_PAYMENT, f"Payment from {partner.name}"
+        lines = [LineInput(bank_account, debit, amount, business_partner=partner),
+                 LineInput(role.reconciliation_account, credit, amount, business_partner=partner)]
+    else:  # money out: Dr payables / Cr bank
+        document_type, text = DocumentType.SUPPLIER_PAYMENT, f"Payment to {partner.name}"
+        lines = [LineInput(role.reconciliation_account, debit, amount, business_partner=partner),
+                 LineInput(bank_account, credit, amount, business_partner=partner)]
     entry = post_journal_entry(
-        company_code=company_code, document_type=DocumentType.CUSTOMER_PAYMENT, posting_date=payment_date,
-        reference=reference, header_text=header_text or f"Payment from {customer.name}"[:100], user=user,
-        lines=[
-            LineInput(bank_account, JournalLine.Side.DEBIT, amount, business_partner=customer),
-            LineInput(role.reconciliation_account, JournalLine.Side.CREDIT, amount, business_partner=customer),
-        ],
+        company_code=company_code, document_type=document_type, posting_date=payment_date,
+        reference=reference, header_text=header_text or text[:100], user=user, lines=lines,
     )
     OpenItemClearing.objects.bulk_create([
         OpenItemClearing(item_id=line_id, clearing_entry=entry, amount=part) for line_id, part in allocations
     ])
     return entry
+
+
+def post_incoming_payment(*, company_code, customer, payment_date: date, amount: Decimal, bank_account: GLAccount,
+                          allocations: list[tuple[int, Decimal]] | None = None, reference: str = "",
+                          header_text: str = "", user=None) -> JournalEntry:
+    """Post a customer payment (Dr bank / Cr receivables) and clear the open items it pays.
+
+    ``allocations`` is a list of (open item line id, amount). Without it, the payment clears the
+    customer's oldest items first. The whole amount must be allocated.
+    """
+    return _post_partner_payment(
+        reconciliation_type=GLAccount.ReconciliationType.CUSTOMER, company_code=company_code, partner=customer,
+        payment_date=payment_date, amount=amount, bank_account=bank_account, allocations=allocations,
+        reference=reference, header_text=header_text, user=user,
+    )
+
+
+def post_outgoing_payment(*, company_code, supplier, payment_date: date, amount: Decimal, bank_account: GLAccount,
+                          allocations: list[tuple[int, Decimal]] | None = None, reference: str = "",
+                          header_text: str = "", user=None) -> JournalEntry:
+    """Pay a supplier (Dr payables / Cr bank) and clear the supplier invoices it pays. Same rules as
+    ``post_incoming_payment``: oldest first without allocations, and the whole amount must be allocated."""
+    return _post_partner_payment(
+        reconciliation_type=GLAccount.ReconciliationType.SUPPLIER, company_code=company_code, partner=supplier,
+        payment_date=payment_date, amount=amount, bank_account=bank_account, allocations=allocations,
+        reference=reference, header_text=header_text, user=user,
+    )
 
 
 AGEING_BUCKETS = ("not_due", "days_1_30", "days_31_60", "days_61_90", "over_90")
@@ -449,15 +489,14 @@ def _bucket(days_overdue: int) -> str:
     return "over_90"
 
 
-def receivables_ageing(company_code, as_of: date) -> dict:
-    """Open receivables per customer, split by how many days past the due date they are."""
-    customers = {}
+def _ageing(company_code, as_of: date, reconciliation_type, key: str) -> dict:
+    partners = {}
     totals = dict.fromkeys(AGEING_BUCKETS, ZERO)
-    for item in open_items(company_code):
+    for item in open_items(company_code, reconciliation_type=reconciliation_type):
         if item["posting_date"] > as_of:
             continue
         bucket = _bucket((as_of - item["due_date"]).days)
-        row = customers.setdefault(item["business_partner"], {
+        row = partners.setdefault(item["business_partner"], {
             "business_partner": item["business_partner"], "name": item["business_partner_name"],
             **dict.fromkeys(AGEING_BUCKETS, ZERO), "total": ZERO,
         })
@@ -466,17 +505,39 @@ def receivables_ageing(company_code, as_of: date) -> dict:
         totals[bucket] += item["open_amount"]
     return {
         "company_code": company_code.code, "currency": company_code.currency.code, "as_of": as_of,
-        "customers": sorted(customers.values(), key=lambda r: r["business_partner"] or ""),
+        key: sorted(partners.values(), key=lambda r: r["business_partner"] or ""),
         "totals": {**totals, "total": sum(totals.values(), ZERO)},
     }
 
 
-def receivables_reconciliation(company_code) -> dict:
-    """Sum of open receivable items versus the balance of the receivables reconciliation accounts."""
-    open_total = sum((item["open_amount"] for item in open_items(company_code)), ZERO)
+def receivables_ageing(company_code, as_of: date) -> dict:
+    """Open receivables per customer, split by how many days past the due date they are."""
+    return _ageing(company_code, as_of, GLAccount.ReconciliationType.CUSTOMER, "customers")
+
+
+def payables_ageing(company_code, as_of: date) -> dict:
+    """Open payables per supplier, split by how many days past the due date they are."""
+    return _ageing(company_code, as_of, GLAccount.ReconciliationType.SUPPLIER, "suppliers")
+
+
+def _reconciliation(company_code, reconciliation_type) -> dict:
+    open_total = sum((item["open_amount"] for item in open_items(
+        company_code, reconciliation_type=reconciliation_type
+    )), ZERO)
     ledger = JournalLine.objects.filter(
-        company_code=company_code, gl_account__reconciliation_type=GLAccount.ReconciliationType.CUSTOMER
+        company_code=company_code, gl_account__reconciliation_type=reconciliation_type
     ).aggregate(total=Sum("amount_local"))["total"]
-    ledger = _money(ledger)
+    ledger = _money(ledger) * _recon_sign(reconciliation_type)
     return {"company_code": company_code.code, "open_items": open_total, "ledger_balance": ledger,
             "difference": open_total - ledger, "reconciled": open_total == ledger}
+
+
+def receivables_reconciliation(company_code) -> dict:
+    """Sum of open receivable items versus the balance of the receivables reconciliation accounts."""
+    return _reconciliation(company_code, GLAccount.ReconciliationType.CUSTOMER)
+
+
+def payables_reconciliation(company_code) -> dict:
+    """Sum of open payable items versus the (credit) balance of the payables reconciliation accounts,
+    shown as a positive amount."""
+    return _reconciliation(company_code, GLAccount.ReconciliationType.SUPPLIER)
