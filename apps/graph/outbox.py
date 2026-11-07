@@ -12,6 +12,9 @@ from .projection import PROJECTORS, model_key
 
 
 def emit(instance, payload=None):
+    """Record that ``instance`` changed so the projector refreshes it. Call this after bulk ``.update()``
+    calls, which do not send ``post_save`` signals.
+    """
     if not settings.GRAPH_ENABLED:
         return None
     return OutboxEvent.objects.create(aggregate_type=model_key(instance), aggregate_id=instance.pk,
@@ -37,6 +40,7 @@ def _deleted(sender, instance, **kwargs):
 
 
 def connect_signals():
+    """Write an outbox event on every save and delete of a projected model (called from ``ready()``)."""
     from django.apps import apps
 
     for aggregate_type in PROJECTORS:

@@ -1,3 +1,5 @@
+"""App configuration for procure-to-pay.
+"""
 from django.apps import AppConfig
 
 

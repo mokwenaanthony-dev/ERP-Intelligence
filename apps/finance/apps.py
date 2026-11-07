@@ -1,3 +1,5 @@
+"""App configuration for the general ledger.
+"""
 from django.apps import AppConfig
 
 

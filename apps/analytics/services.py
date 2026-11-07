@@ -4,6 +4,7 @@ Every report says how current its numbers are: ``materialized`` is True on Postg
 views are refreshed by ``refresh_views`` (Celery, every 15 minutes, or on demand), and
 ``data_as_of`` is the time of the last refresh. On SQLite the views are live.
 """
+import logging
 import time
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -17,6 +18,8 @@ from apps.inventory.models import AccountKey, InventoryAccountSetting
 
 from .models import GLPeriodBalance, PayrollCost, RefreshLog, SalesMargin, StockPosition
 from .sql import VIEWS, is_postgres
+
+logger = logging.getLogger(__name__)
 
 ZERO = Decimal("0.00")
 CENT = Decimal("0.01")
@@ -50,6 +53,7 @@ def refresh_views() -> list[dict]:
                 view_name=name, defaults={"refreshed_at": timezone.now(), "duration_ms": duration}
             )
             results.append({"view": name, "refreshed_at": log.refreshed_at, "duration_ms": duration})
+            logger.info("Refreshed reporting view %s in %d ms", name, duration)
     return results
 
 
@@ -63,6 +67,7 @@ def _freshness(*views: str) -> dict:
 
 
 def freshness() -> dict:
+    """Refresh status of every reporting view, for the ``/api/analytics/refresh/`` endpoint."""
     return {
         "materialized": is_postgres(connection),
         "views": [{"view": name, "refreshed_at": log.refreshed_at if log else None,
@@ -79,6 +84,9 @@ def _header(company_code, *views: str, **extra) -> dict:
 # --- Income statement and balance sheet ----------------------------------------------------
 
 def cost_of_sales_accounts(company_code) -> set[int]:
+    """G/L accounts that the inventory account determination uses for cost of sales
+    (movement 601), so the income statement can show gross margin separately.
+    """
     return set(InventoryAccountSetting.objects.filter(
         chart_of_accounts=company_code.chart_of_accounts, account_key=AccountKey.COST_OF_SALES
     ).values_list("gl_account_id", flat=True))

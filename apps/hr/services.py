@@ -18,6 +18,7 @@ its rate is above zero.
 import calendar
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+import logging
 
 from django.db import transaction
 
@@ -25,6 +26,8 @@ from apps.finance import services as finance
 from apps.finance.models import DocumentType, JournalLine
 
 from .models import Employee, PayeTable, PayrollResult, PayrollRun, PayrollSetting
+
+logger = logging.getLogger(__name__)
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -51,15 +54,19 @@ def tax_year_for(day: date) -> int:
 @transaction.atomic
 def create_employee(*, company_code, position, first_name: str, last_name: str, hire_date: date,
                     monthly_salary: Decimal, user=None, **extra) -> Employee:
+    """Hire an employee into a position; the personnel number comes from the gap-free "PN" range."""
     if position.org_unit.company_code_id != company_code.pk:
         raise PayrollError(f"Position {position.code} is not in company code {company_code.code}.")
     if monthly_salary is None or monthly_salary < 0:
         raise PayrollError("The monthly salary cannot be negative.")
-    return Employee.objects.create(
+    employee = Employee.objects.create(
         company_code=company_code, personnel_number=finance.next_document_number(company_code, CONTINUOUS, "PN"),
         position=position, first_name=first_name, last_name=last_name, hire_date=hire_date,
         monthly_salary=monthly_salary, created_by=user, updated_by=user, **extra,
     )
+    # Personnel number and position only: names and salary are personal data and stay out of logs.
+    logger.info("Hired employee %s into position %s", employee.personnel_number, position.code)
+    return employee
 
 
 # --- Calculation ---------------------------------------------------------------------------
@@ -73,11 +80,13 @@ def annual_tax(table: PayeTable, income: Decimal) -> Decimal:
 
 
 def monthly_paye(table: PayeTable, monthly_gross: Decimal) -> Decimal:
+    """PAYE for one month: tax on the annualised salary, less the primary rebate, divided by 12."""
     tax = annual_tax(table, monthly_gross * MONTHS) - table.primary_rebate
     return _round(max(tax, ZERO) / MONTHS)
 
 
 def calculate(employee: Employee, setting: PayrollSetting, table: PayeTable) -> dict:
+    """Gross, PAYE, UIF (employee and employer), SDL and net pay for one employee for one month."""
     gross = _round(employee.monthly_salary)
     uif = _round(min(gross, setting.uif_monthly_ceiling) * setting.uif_rate / HUNDRED)
     paye = monthly_paye(table, gross)
@@ -105,6 +114,9 @@ def _table(tax_year: int) -> PayeTable:
 
 
 def employees_in_period(company_code, start: date, end: date):
+    """Everyone employed at any time between ``start`` and ``end`` (hired by the end,
+    not terminated before the start), with the data needed for cost centres.
+    """
     return (
         Employee.objects.select_related("position__cost_center__profit_center",
                                         "position__org_unit__cost_center__profit_center")
@@ -194,6 +206,8 @@ def post_payroll_run(company_code, *, year: int, month: int, posting_date: date 
         PayrollResult(run=run, employee=employee, cost_center=cost_center, **amounts)
         for employee, cost_center, amounts in results
     ])
+    logger.info("Posted payroll run %s for %s-%02d: %d employee(s), journal entry %s",
+                run.run_number, year, month, len(results), entry.document_number)
     return run
 
 
@@ -206,4 +220,5 @@ def reverse_payroll_run(run: PayrollRun, *, posting_date: date | None = None, us
     finance.reverse_journal_entry(run.journal_entry, posting_date=posting_date, user=user)
     PayrollRun.objects.filter(pk=run.pk).update(status=PayrollRun.Status.REVERSED, updated_by=user)
     run.refresh_from_db()
+    logger.info("Reversed payroll run %s", run.run_number)
     return run

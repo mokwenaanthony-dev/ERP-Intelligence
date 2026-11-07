@@ -1,3 +1,5 @@
+"""``manage.py refresh_analytics``: refresh the reporting views now instead of waiting for Celery beat.
+"""
 from django.core.management.base import BaseCommand
 
 from apps.analytics import services

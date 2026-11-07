@@ -63,6 +63,8 @@ class RevenueAccountSetting(AuditedModel):
 
 
 class SalesOrder(AuditedModel):
+    """A customer's order. Delivered and invoiced quantities are derived from its documents."""
+
     class Status(models.TextChoices):
         OPEN = "OPEN", "Open"  # being entered; items can change
         CONFIRMED = "CONFIRMED", "Confirmed"  # released for delivery
@@ -88,6 +90,7 @@ class SalesOrder(AuditedModel):
 
     @property
     def net_total(self) -> Decimal:
+        """Sum of the items' net amounts."""
         return sum((item.net_amount for item in self.items.all()), Decimal("0.00"))
 
     def __str__(self):
@@ -95,6 +98,8 @@ class SalesOrder(AuditedModel):
 
 
 class SalesOrderItem(AuditedModel):
+    """One material on a sales order, with quantity, price and tax code."""
+
     order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name="items")
     item_number = models.PositiveSmallIntegerField(help_text="10, 20, 30 ...")
     material = models.ForeignKey("masterdata.Material", on_delete=models.PROTECT, related_name="+")
@@ -115,20 +120,24 @@ class SalesOrderItem(AuditedModel):
 
     @property
     def net_amount(self) -> Decimal:
+        """Quantity times net price, rounded to cents."""
         return (self.quantity * self.net_price).quantize(Decimal("0.01"))
 
     @property
     def delivered_quantity(self) -> Decimal:
+        """Quantity on posted deliveries (reversed deliveries excluded)."""
         total = self.delivery_items.filter(delivery__status=Delivery.Status.POSTED).aggregate(q=Sum("quantity"))["q"]
         return Decimal(total or 0).quantize(Decimal("0.001"))
 
     @property
     def invoiced_quantity(self) -> Decimal:
+        """Quantity on posted invoices (cancelled invoices excluded)."""
         total = self.invoice_items.filter(invoice__status=Invoice.Status.POSTED).aggregate(q=Sum("quantity"))["q"]
         return Decimal(total or 0).quantize(Decimal("0.001"))
 
     @property
     def open_quantity(self) -> Decimal:
+        """Ordered quantity not yet delivered."""
         return self.quantity - self.delivered_quantity
 
     def __str__(self):
@@ -136,6 +145,8 @@ class SalesOrderItem(AuditedModel):
 
 
 class Delivery(AuditedModel):
+    """Goods issued to a customer (movement 601). Posts stock and cost of sales; reversed, not edited."""
+
     class Status(models.TextChoices):
         POSTED = "POSTED", "Goods issue posted"
         REVERSED = "REVERSED", "Reversed"
@@ -163,6 +174,8 @@ class Delivery(AuditedModel):
 
 
 class DeliveryItem(models.Model):
+    """One delivered sales order item."""
+
     delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name="items")
     order_item = models.ForeignKey(SalesOrderItem, on_delete=models.PROTECT, related_name="delivery_items")
     storage_location = models.ForeignKey("organization.StorageLocation", on_delete=models.PROTECT, related_name="+")
@@ -176,6 +189,8 @@ class DeliveryItem(models.Model):
 
 
 class Invoice(AuditedModel):
+    """The bill for a delivery. Posts revenue, output VAT and the receivable; cancelled, not edited."""
+
     class Status(models.TextChoices):
         POSTED = "POSTED", "Posted"
         CANCELLED = "CANCELLED", "Cancelled"
@@ -205,6 +220,8 @@ class Invoice(AuditedModel):
 
 
 class InvoiceItem(models.Model):
+    """One invoiced delivery item."""
+
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="items")
     order_item = models.ForeignKey(SalesOrderItem, on_delete=models.PROTECT, related_name="invoice_items")
     quantity = models.DecimalField(max_digits=18, decimal_places=3)

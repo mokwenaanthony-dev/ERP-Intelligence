@@ -136,6 +136,8 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
+    # Logs every API error (with the file and line of a broken business rule) before responding.
+    "EXCEPTION_HANDLER": "apps.common.exceptions.api_exception_handler",
 }
 
 SIMPLE_JWT = {
@@ -154,6 +156,8 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+# Keep Django's LOGGING (request IDs, file and line numbers) in charge of worker logs too.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 # Celery beat: keep the analytics materialized views no more than 15 minutes behind.
 CELERY_BEAT_SCHEDULE = {
     "refresh-analytics-views": {"task": "analytics.refresh_views", "schedule": 15 * 60},
@@ -168,31 +172,60 @@ NEO4J_PASSWORD = config("NEO4J_PASSWORD", default="")
 GRAPH_ENABLED = bool(NEO4J_URI)
 
 # --- Logging (design document, section 4) -----------------------------------------
-# stdout plus a rotating file capped at 10 MB with 5 backups.
+# Three destinations, all with the same detailed format:
+#   console          what `docker compose logs` and the terminal show
+#   logs/erp.log     everything at LOG_LEVEL and above (rotating: 10 MB x 5 files)
+#   logs/errors.log  ERROR and above only, with full tracebacks (rotating: 10 MB x 5 files)
+# Every line shows the request ID (see apps/common/logcontext.py) and the exact source of the
+# message, e.g.:
+#   2026-11-07 18:40:12 | WARNING | 3f9c2a7b1d4e | erp.api | exceptions.api_exception_handler:45 |
+#   Business rule rejected in ...: Posting period 2027/03 is closed.
+#   (raised at apps/finance/services.py:232 in _create_entry)
+# Find everything about one request with:  grep 3f9c2a7b1d4e logs/erp.log
 LOG_DIR = Path(config("LOG_DIR", default=str(BASE_DIR / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_LEVEL = config("LOG_LEVEL", default="INFO")
+
+
+def _rotating(filename, level="DEBUG"):
+    return {
+        "class": "logging.handlers.RotatingFileHandler",
+        "filename": str(LOG_DIR / filename),
+        "maxBytes": 10 * 1024 * 1024,
+        "backupCount": 5,
+        "encoding": "utf-8",
+        "formatter": "detailed",
+        "filters": ["request_id"],
+        "level": level,
+    }
+
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "apps.common.logcontext.RequestIdFilter"},
+    },
     "formatters": {
-        "pipe": {
-            "format": "%(asctime)s | %(levelname)s | %(module)s | %(message)s",
+        "detailed": {
+            "format": "%(asctime)s | %(levelname)-7s | %(request_id)s | %(name)s | "
+                      "%(module)s.%(funcName)s:%(lineno)d | %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "pipe"},
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "erp.log"),
-            "maxBytes": 10 * 1024 * 1024,
-            "backupCount": 5,
-            "encoding": "utf-8",
-            "formatter": "pipe",
-        },
+        "console": {"class": "logging.StreamHandler", "formatter": "detailed", "filters": ["request_id"]},
+        "file": _rotating("erp.log"),
+        "errors": _rotating("errors.log", level="ERROR"),
     },
     "loggers": {
-        "erp": {"handlers": ["console", "file"], "level": config("LOG_LEVEL", default="INFO")},
+        # Our own code: "erp.*" (requests, api) and "apps.*" (every module's logging.getLogger(__name__)).
+        # (They propagate to the root logger, which has no handler, so nothing is written twice and
+        # pytest's caplog can still see them.)
+        "erp": {"handlers": ["console", "file", "errors"], "level": LOG_LEVEL},
+        "apps": {"handlers": ["console", "file", "errors"], "level": LOG_LEVEL},
+        # Django's own request errors (e.g. a crash outside the API) and Celery's task log.
+        "django.request": {"handlers": ["console", "file", "errors"], "level": "WARNING", "propagate": False},
+        "celery": {"handlers": ["console", "file", "errors"], "level": "INFO", "propagate": False},
     },
 }

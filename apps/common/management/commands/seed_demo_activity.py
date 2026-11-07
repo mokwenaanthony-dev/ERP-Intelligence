@@ -73,7 +73,8 @@ class Command(BaseCommand):
         if not periods:
             raise CommandError("No completed month in the fiscal year yet; pass --months.")
 
-        self.rng = random.Random(seed)  # nosec B311 - demo data, not security
+        # A seeded generator makes the demo repeatable; it never produces secrets.
+        self.rng = random.Random(seed)  # nosec B311
         self._master_data()
         for year, month in periods:
             self._month(year, month)

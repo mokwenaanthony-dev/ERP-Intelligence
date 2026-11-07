@@ -9,6 +9,7 @@ in the same database transaction, and leaves an immutable trail that can be reve
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+import logging
 
 from django.db import transaction
 
@@ -31,6 +32,8 @@ from .models import (
     SalesPrice,
 )
 
+logger = logging.getLogger(__name__)
+
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 
@@ -49,6 +52,8 @@ class SalesError(finance.PostingError):
 
 @dataclass
 class OrderItemInput:
+    """One item of a sales order to create. Leave price and tax code empty to determine them."""
+
     material: Material
     quantity: Decimal
     plant: Plant | None = None  # defaults to the first plant of the company code
@@ -58,6 +63,8 @@ class OrderItemInput:
 
 @dataclass
 class DeliveryItemInput:
+    """One item of a delivery to post."""
+
     order_item: SalesOrderItem
     quantity: Decimal
     storage_location: StorageLocation
@@ -66,6 +73,7 @@ class DeliveryItemInput:
 # --- Pricing and account determination ---------------------------------------------------
 
 def price_for(material, sales_organization, on: date) -> Decimal:
+    """The price list price valid on ``on`` (the latest ``valid_from`` on or before that date)."""
     price = SalesPrice.objects.filter(
         material=material, sales_organization=sales_organization, valid_from__lte=on
     ).order_by("-valid_from").first()
@@ -75,6 +83,9 @@ def price_for(material, sales_organization, on: date) -> Decimal:
 
 
 def revenue_setting(company_code, material) -> RevenueAccountSetting:
+    """Revenue account and default tax code for a material type; the specific type wins over
+    the default (blank) setting.
+    """
     settings = {
         s.material_type: s for s in RevenueAccountSetting.objects.select_related(
             "revenue_account", "default_tax_code__gl_account"
@@ -134,6 +145,7 @@ def _build_items(order, items: list[OrderItemInput], user):
 def create_sales_order(*, sales_organization, customer, order_date: date, items: list[OrderItemInput],
                        requested_delivery_date: date | None = None, customer_reference: str = "",
                        user=None) -> SalesOrder:
+    """Create an OPEN sales order for a customer of the company code."""
     company_code = sales_organization.company_code
     _customer_role(company_code, customer)
     order = SalesOrder.objects.create(
@@ -143,11 +155,13 @@ def create_sales_order(*, sales_organization, customer, order_date: date, items:
         created_by=user, updated_by=user,
     )
     _build_items(order, items, user)
+    logger.info("Created sales order %s for customer %s: %d item(s)", order.order_number, customer.number, len(items))
     return order
 
 
 @transaction.atomic
 def replace_order_items(order: SalesOrder, items: list[OrderItemInput], user=None) -> SalesOrder:
+    """Replace every item of an OPEN sales order."""
     order = SalesOrder.objects.select_for_update().get(pk=order.pk)
     if order.status != SalesOrder.Status.OPEN:
         raise SalesError(f"Items can only change while the order is OPEN (it is {order.status}).")
@@ -155,6 +169,7 @@ def replace_order_items(order: SalesOrder, items: list[OrderItemInput], user=Non
     _build_items(order, items, user)
     order.updated_by = user
     order.save(update_fields=["updated_by", "updated_at"])
+    logger.info("Replaced the items of sales order %s: %d item(s)", order.order_number, len(items))
     return order
 
 
@@ -162,11 +177,13 @@ def _set_status(order, status, user):
     order.status = status
     order.updated_by = user
     order.save(update_fields=["status", "updated_by", "updated_at"])
+    logger.info("Sales order %s set to %s", order.order_number, status)
     return order
 
 
 @transaction.atomic
 def confirm_order(order: SalesOrder, user=None) -> SalesOrder:
+    """Confirm an OPEN order so it can be delivered (the customer must not be blocked)."""
     order = SalesOrder.objects.select_for_update().get(pk=order.pk)
     if order.status != SalesOrder.Status.OPEN:
         raise SalesError(f"Only OPEN orders can be confirmed (this one is {order.status}).")
@@ -176,6 +193,7 @@ def confirm_order(order: SalesOrder, user=None) -> SalesOrder:
 
 @transaction.atomic
 def cancel_order(order: SalesOrder, user=None) -> SalesOrder:
+    """Cancel an order that has no posted deliveries."""
     order = SalesOrder.objects.select_for_update().get(pk=order.pk)
     if order.status in (SalesOrder.Status.COMPLETED, SalesOrder.Status.CANCELLED):
         raise SalesError(f"A {order.status} order cannot be cancelled.")
@@ -245,6 +263,7 @@ def post_delivery(order: SalesOrder, *, delivery_date: date, items: list[Deliver
                      quantity=item.quantity)
         for item in items
     ])
+    logger.info("Posted delivery %s for sales order %s", delivery.delivery_number, order.order_number)
     return delivery
 
 
@@ -261,6 +280,7 @@ def reverse_delivery(delivery: Delivery, *, posting_date: date | None = None, us
     outbox.emit(delivery)
     delivery.refresh_from_db()
     _refresh_completion(delivery.sales_order, user)
+    logger.info("Reversed delivery %s", delivery.delivery_number)
     return delivery
 
 
@@ -316,6 +336,7 @@ def post_invoice(delivery: Delivery, *, invoice_date: date, user=None) -> Invoic
         for order_item, quantity, net, tax in rows
     ])
     _refresh_completion(order, user)
+    logger.info("Posted invoice %s for delivery %s", invoice.invoice_number, delivery.delivery_number)
     return invoice
 
 
@@ -333,6 +354,7 @@ def cancel_invoice(invoice: Invoice, *, posting_date: date | None = None, user=N
     outbox.emit(invoice)
     invoice.refresh_from_db()
     _refresh_completion(invoice.delivery.sales_order, user)
+    logger.info("Cancelled invoice %s", invoice.invoice_number)
     return invoice
 
 

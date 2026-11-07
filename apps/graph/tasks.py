@@ -1,3 +1,5 @@
+"""Celery task that drains the outbox into Neo4j (scheduled every 10 seconds).
+"""
 from celery import shared_task
 
 from . import processor

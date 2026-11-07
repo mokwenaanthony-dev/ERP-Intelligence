@@ -1,3 +1,8 @@
+"""Management report endpoints (read-only).
+
+Each response carries ``materialized`` and ``data_as_of`` so the reader knows how current the
+numbers are. ``RefreshView`` lets a Finance Manager refresh the views on demand.
+"""
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView

@@ -1,3 +1,9 @@
+"""Knowledge graph API: Customer 360, document flow, supplier dependency, GraphRAG context, status
+and rebuild.
+
+Every query is filtered by the caller's role (``access.py``), so the graph never shows a user more
+than the relational API would. Returns 503 when the graph is switched off (no ``NEO4J_URI``).
+"""
 from django.conf import settings
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, PermissionDenied

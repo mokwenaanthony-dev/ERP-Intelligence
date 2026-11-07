@@ -14,6 +14,8 @@ from apps.common.models import AuditedModel
 
 
 class ChartOfAccounts(AuditedModel):
+    """A list of G/L accounts shared by one or more company codes."""
+
     code = models.CharField(max_length=4, unique=True)
     name = models.CharField(max_length=200)
 
@@ -26,6 +28,10 @@ class ChartOfAccounts(AuditedModel):
 
 
 class GLAccount(AuditedModel):
+    """A general ledger account. Its type decides whether it carries forward (balance sheet) or
+    is closed to retained earnings at year end (income statement).
+    """
+
     class AccountType(models.TextChoices):
         ASSET = "ASSET", "Asset"
         LIABILITY = "LIABILITY", "Liability"
@@ -61,6 +67,7 @@ class GLAccount(AuditedModel):
 
     @property
     def is_balance_sheet(self) -> bool:
+        """Assets, liabilities and equity carry their balance into the next year."""
         return self.account_type in self.BALANCE_SHEET_TYPES
 
     def __str__(self):
@@ -88,6 +95,8 @@ class FiscalYear(AuditedModel):
 
 
 class PostingPeriod(AuditedModel):
+    """One month of a fiscal year. Postings are only accepted while the period is open."""
+
     class Status(models.TextChoices):
         OPEN = "OPEN", "Open"
         CLOSED = "CLOSED", "Closed"
@@ -106,6 +115,7 @@ class PostingPeriod(AuditedModel):
 
     @property
     def is_open(self) -> bool:
+        """True when postings may be made in this period."""
         return self.status == self.Status.OPEN
 
     def __str__(self):
@@ -113,6 +123,8 @@ class PostingPeriod(AuditedModel):
 
 
 class TaxCode(AuditedModel):
+    """A VAT code (input or output) with its rate and the G/L account the tax is posted to."""
+
     class TaxType(models.TextChoices):
         OUTPUT = "OUTPUT", "Output tax (on sales)"
         INPUT = "INPUT", "Input tax (on purchases)"
@@ -139,6 +151,8 @@ class TaxCode(AuditedModel):
 
 
 class DocumentType(models.TextChoices):
+    """SAP-style journal entry types, e.g. SA (G/L), DR (customer invoice), DZ (incoming payment)."""
+
     GENERAL = "SA", "General journal"
     CUSTOMER_INVOICE = "DR", "Customer invoice"
     CUSTOMER_PAYMENT = "DZ", "Customer payment"
@@ -183,11 +197,13 @@ class ImmutableModel(models.Model):
         abstract = True
 
     def save(self, *args, **kwargs):
+        """Insert once. Any later save raises; corrections are made by posting a reversal."""
         if not self._state.adding:
             raise ImmutableDocumentError("Posted journal documents cannot be changed; post a reversal instead.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
+        """Posted documents are never deleted; post a reversal instead."""
         raise ImmutableDocumentError("Posted journal documents cannot be deleted; post a reversal instead.")
 
 

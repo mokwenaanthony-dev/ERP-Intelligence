@@ -14,6 +14,8 @@ from apps.common.models import AuditedModel
 
 
 class ProfitCenter(AuditedModel):
+    """A part of the business whose profit is measured separately (SAP CO-PCA)."""
+
     company_code = models.ForeignKey("organization.CompanyCode", on_delete=models.PROTECT, related_name="+")
     code = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
@@ -30,6 +32,8 @@ class ProfitCenter(AuditedModel):
 
 
 class CostCenter(AuditedModel):
+    """A place where costs arise (a department or function), belonging to one profit centre."""
+
     class Category(models.TextChoices):
         MANAGEMENT = "MGMT", "Management and administration"
         SALES = "SALES", "Sales and distribution"
@@ -55,6 +59,8 @@ class CostCenter(AuditedModel):
 
 
 class PlantProfitCenter(AuditedModel):
+    """Default profit centre for postings from a plant, used when a line names no other."""
+
     plant = models.OneToOneField("organization.Plant", on_delete=models.PROTECT, related_name="profit_center_link")
     profit_center = models.ForeignKey(ProfitCenter, on_delete=models.PROTECT, related_name="plants")
 

@@ -52,6 +52,7 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 4a | Analytics layer: reporting views (materialized on PostgreSQL), income statement, balance sheet, margin analysis, stock ageing, payroll cost trend | Done |
 | 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
 | 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware GraphRAG retrieval | Done |
+| 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | In review |
 | 5 | Production planning: bills of materials, routings, production orders | Planned |
 | 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
 | 7 | CRM and SRM | Planned |
@@ -438,6 +439,34 @@ Open http://localhost:3000 and sign in with the Metabase admin from `.env`. Two 
 Metabase connects as `erp_reporting`, a PostgreSQL role that can only read the analytics views and
 lookup tables (no journal lines, no employee records), in read-only sessions. The dashboards are
 defined in `scripts/metabase_setup.py`, so they can be rebuilt on any machine.
+
+## Logging and troubleshooting
+
+Every log line says **when, how serious, which request, which module, function and line**:
+
+```
+2026-11-07 18:40:12 | WARNING | 3f9c2a7b1d4e | erp.api | exceptions.api_exception_handler:50 | Business rule rejected in JournalEntryViewSet POST /api/finance/journal-entries/: Posting period 2027/03 is closed. (raised at apps/finance/services.py:232 in _create_entry)
+```
+
+| Where | What goes there |
+|---|---|
+| Console (`docker compose logs web`) | Everything at `LOG_LEVEL` (default `INFO`) |
+| `logs/erp.log` | The same, rotating at 10 MB, five files kept |
+| `logs/errors.log` | Errors only, each with its full traceback and line numbers |
+
+- **Request IDs.** Each API call gets an ID, returned in the `X-Request-ID` response header and
+  printed on every line written while it ran. A caller (the MES, a test script) can send its own
+  `X-Request-ID` to trace one call end to end. Celery tasks use `task:<id>`.
+  `grep 3f9c2a7b1d4e logs/erp.log` shows the whole story of one request.
+- **Business events** (`apps.*`): each posting logs its document number, e.g. `Posted invoice
+  9000012 for delivery 8000031`, so a document can be traced from order to payment in the log.
+- **Rejected business rules** are WARNINGs naming the view and the file and line of the rule.
+- **Unexpected errors** are ERRORs with a full traceback. The caller gets a plain 500 with the
+  request ID to quote, never internal details.
+- **What is never logged:** passwords, tokens, query strings, request bodies, and personal or pay
+  data. Payroll lines carry run and personnel numbers only.
+
+Set `LOG_LEVEL=DEBUG` in `.env` for more detail, or `LOG_DIR` to write the files elsewhere.
 
 ## Test and check
 

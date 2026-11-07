@@ -8,6 +8,7 @@ import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+import logging
 
 from django.db import transaction
 from django.db.models import Case, DecimalField, F, Sum, Value, When
@@ -26,6 +27,8 @@ from .models import (
     TaxCode,
 )
 
+logger = logging.getLogger(__name__)
+
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 
@@ -36,6 +39,8 @@ class PostingError(Exception):
 
 @dataclass
 class LineInput:
+    """One line of a journal entry to post. Amounts are positive; ``debit_credit`` gives the side."""
+
     gl_account: GLAccount
     debit_credit: str  # "D" or "C"
     amount: Decimal  # positive, in document currency
@@ -80,10 +85,12 @@ def create_fiscal_year(company_code, year: int, user=None) -> FiscalYear:
         month += 1
         if month == 13:
             month, cal_year = 1, cal_year + 1
+    logger.info("Created fiscal year %s for %s (%s to %s)", year, company_code.code, start, end)
     return fiscal_year
 
 
 def find_period(company_code, posting_date: date) -> PostingPeriod:
+    """The posting period that contains ``posting_date``, or PostingError if no fiscal year covers it."""
     period = (
         PostingPeriod.objects.select_related("fiscal_year")
         .filter(fiscal_year__company_code=company_code, start_date__lte=posting_date, end_date__gte=posting_date)
@@ -95,9 +102,11 @@ def find_period(company_code, posting_date: date) -> PostingPeriod:
 
 
 def set_period_status(period: PostingPeriod, status: str, user=None) -> PostingPeriod:
+    """Open or close a posting period (the Finance Manager's month-end control)."""
     period.status = status
     period.updated_by = user
     period.save(update_fields=["status", "updated_by", "updated_at"])
+    logger.info("Posting period %s set to %s by %s", period, status, getattr(user, "username", "system"))
     return period
 
 
@@ -188,6 +197,7 @@ def _derive_profit_centers(lines: list[LineInput]) -> list[LineInput]:
 
 
 def calculate_tax(amount: Decimal, tax_code: TaxCode) -> Decimal:
+    """Tax on a net amount at the code's rate, rounded half-up to cents."""
     return (amount * tax_code.rate / Decimal("100")).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
@@ -254,6 +264,10 @@ def _create_entry(*, company_code, document_type, posting_date, document_date, c
         )
         for index, (line, local_amount) in enumerate(zip(lines, local_amounts), start=1)
     ])
+    logger.info("Posted %s %s/%s on %s: %d lines, %s %s%s", entry.document_type, company_code.code,
+                entry.document_number, posting_date, len(lines), company_code.currency.code,
+                sum((a for a in local_amounts if a > 0), Decimal("0")),
+                f" (reverses {reversal_of.document_number})" if reversal_of else "")
     return entry
 
 
@@ -309,6 +323,7 @@ def reverse_journal_entry(entry: JournalEntry, *, posting_date: date | None = No
         user=user, reversal_of=entry,
     )
     JournalEntry.objects.filter(pk=entry.pk).update(status=JournalEntry.Status.REVERSED, updated_by=user)
+    logger.info("Reversed %s with %s", entry.document_number, reversal.document_number)
     return reversal
 
 
@@ -487,6 +502,9 @@ def _post_partner_payment(*, reconciliation_type, company_code, partner, payment
     OpenItemClearing.objects.bulk_create([
         OpenItemClearing(item_id=line_id, clearing_entry=entry, amount=part) for line_id, part in allocations
     ])
+    logger.info("%s payment %s for partner %s: %s cleared across %d open item(s)",
+                "Incoming" if customer else "Outgoing", entry.document_number, partner.number, amount,
+                len(allocations))
     return entry
 
 

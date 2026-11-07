@@ -26,12 +26,17 @@ from .models import Role
 
 
 class RolePermission(BasePermission):
+    """DRF permission driven by the user's role: read roles may use GET/HEAD/OPTIONS, write roles
+    may also change data. Administrators and superusers may do everything.
+    """
+
     read_roles: tuple = ()
     write_roles: tuple = ()
     read_all: bool = False  # any signed-in user may read (shared master data)
     message = "Your role does not allow this action in this module."
 
     def has_permission(self, request, view):
+        """Allow the request if the user's role is in the read or write list for this method."""
         user = request.user
         if not user or not user.is_authenticated:
             return False
@@ -43,6 +48,7 @@ class RolePermission(BasePermission):
 
     @classmethod
     def build(cls, name: str, *, read=(), write=(), read_all=False):
+        """Make a named permission class for one module, e.g. ``FinancePermission``."""
         attrs = {"read_roles": tuple(read), "write_roles": tuple(write), "read_all": read_all}
         return type(name, (cls,), attrs)
 

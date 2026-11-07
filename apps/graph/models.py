@@ -8,6 +8,8 @@ from django.db import models
 
 
 class OutboxEvent(models.Model):
+    """A change to project into the graph, written in the same transaction as the change itself."""
+
     aggregate_type = models.CharField(max_length=60, help_text="app_label.model, e.g. sales.invoice")
     aggregate_id = models.BigIntegerField()
     payload = models.JSONField(default=dict, blank=True, help_text="Only used for deletions (label and key).")

@@ -1,3 +1,5 @@
+"""Django admin for the outbox: see pending and failed graph events and the last error of each.
+"""
 from django.contrib import admin
 
 from .models import OutboxEvent

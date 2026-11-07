@@ -15,6 +15,8 @@ def _fk(model, null=False):
 
 
 class GLPeriodBalance(models.Model):
+    """Reporting view: debit, credit and balance per G/L account, cost and profit centre and period."""
+
     row_key = models.CharField(max_length=120, primary_key=True)
     company_code = _fk("organization.CompanyCode")
     fiscal_year = models.PositiveSmallIntegerField()
@@ -34,6 +36,8 @@ class GLPeriodBalance(models.Model):
 
 
 class SalesMargin(models.Model):
+    """Reporting view: revenue, cost of sales and margin per customer, material and period."""
+
     row_key = models.CharField(max_length=120, primary_key=True)
     company_code = _fk("organization.CompanyCode")
     fiscal_year = models.PositiveSmallIntegerField()
@@ -50,6 +54,8 @@ class SalesMargin(models.Model):
 
 
 class StockPosition(models.Model):
+    """Reporting view: quantity, value and last receipt and issue dates per material and plant."""
+
     row_key = models.CharField(max_length=60, primary_key=True)
     company_code = _fk("organization.CompanyCode")
     material = _fk("masterdata.Material")
@@ -65,6 +71,8 @@ class StockPosition(models.Model):
 
 
 class PayrollCost(models.Model):
+    """Reporting view: headcount, gross pay and employer contributions per cost centre and month."""
+
     row_key = models.CharField(max_length=80, primary_key=True)
     company_code = _fk("organization.CompanyCode")
     year = models.PositiveSmallIntegerField()
@@ -81,6 +89,8 @@ class PayrollCost(models.Model):
 
 
 class RefreshLog(models.Model):
+    """When each materialized view was last refreshed and how long it took (one row per view)."""
+
     view_name = models.CharField(max_length=60, unique=True)
     refreshed_at = models.DateTimeField()
     duration_ms = models.PositiveIntegerField()

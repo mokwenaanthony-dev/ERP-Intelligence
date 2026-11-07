@@ -86,9 +86,11 @@ class MemoryStore:
 
     # --- helpers for tests ----------------------------------------------------------------
     def props(self, label, key):
+        """Test helper: the properties of one node."""
         return self.nodes[(label, key)]["props"]
 
     def labels(self, label, key):
+        """Test helper: the labels of one node."""
         return self.nodes[(label, key)]["labels"]
 
     def related(self, label, key, rel_type):
@@ -108,6 +110,7 @@ class Neo4jStore:
         self.pending = []
 
     def close(self):
+        """Close the Neo4j driver and its connection pool."""
         self.driver.close()
 
     def node(self, label, key, props=None, extra_labels=()):

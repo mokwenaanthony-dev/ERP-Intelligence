@@ -1,3 +1,10 @@
+"""REST API views for HR and payroll.
+
+Views stay thin: they check the role, validate input with a serializer and call the service layer
+(``services.py``), which holds every business rule. A rule broken in the service raises
+``PostingError``; the serializer turns it into a 400 and ``apps.common.exceptions`` logs it with
+the file and line where it was raised.
+"""
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
