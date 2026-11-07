@@ -113,7 +113,7 @@ def test_balance_sheet_balances(scenario):
 
 @pytest.mark.parametrize("group_by, expected", [
     ("customer", [(None, D("10000.00"), D("0.00"), D("100.0")),
-                  ("1000001", D("2988.00"), D("1800.00"), D("39.8"))]),
+                  ("CUSTOMER", D("2988.00"), D("1800.00"), D("39.8"))]),  # Acme; its number depends on the database
     ("material", [(None, D("10000.00"), D("0.00"), D("100.0")),
                   ("TG-1001", D("1990.00"), D("1200.00"), D("39.7")),
                   ("TG-1002", D("998.00"), D("600.00"), D("39.9"))]),
@@ -122,6 +122,8 @@ def test_balance_sheet_balances(scenario):
 ])
 def test_sales_margin(scenario, group_by, expected):
     report = services.sales_margin(scenario.company, 2027, group_by=group_by)
+    # Partner numbers come from the row id, and PostgreSQL does not roll back id sequences between tests.
+    expected = [(scenario.customer.number if key == "CUSTOMER" else key, *rest) for key, *rest in expected]
     assert [(r["key"], r["revenue"], r["cost_of_sales"], r["margin_percent"]) for r in report["rows"]] == expected
     assert report["totals"]["gross_margin"] == D("11188.00")
     assert report["rows"][0]["name"] == "Not assigned"
