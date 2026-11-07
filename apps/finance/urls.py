@@ -18,5 +18,9 @@ urlpatterns = [
     path("reports/receivables-ageing/", views.ReceivablesAgeingView.as_view(), name="receivables-ageing"),
     path("reports/receivables-reconciliation/", views.ReceivablesReconciliationView.as_view(),
          name="receivables-reconciliation"),
+    path("outgoing-payments/", views.OutgoingPaymentView.as_view(), name="outgoing-payment"),
+    path("reports/payables-ageing/", views.PayablesAgeingView.as_view(), name="payables-ageing"),
+    path("reports/payables-reconciliation/", views.PayablesReconciliationView.as_view(),
+         name="payables-reconciliation"),
     *router.urls,
 ]

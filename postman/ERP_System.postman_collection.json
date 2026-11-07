@@ -48,6 +48,18 @@
     {
       "key": "invoice_id",
       "value": "1"
+    },
+    {
+      "key": "purchase_order_id",
+      "value": ""
+    },
+    {
+      "key": "goods_receipt_id",
+      "value": ""
+    },
+    {
+      "key": "supplier_invoice_id",
+      "value": ""
     }
   ],
   "item": [
@@ -769,6 +781,398 @@
                   "value": "1000"
                 }
               ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Purchasing - procure to pay (purchasing_officer, then inventory_manager, then accountant)",
+      "item": [
+        {
+          "name": "Create purchase order (purchasing_officer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "orders",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchasing_organization\": \"1000\",\n  \"supplier\": \"{{supplier_bp}}\",\n  \"order_date\": \"2026-05-04\",\n  \"supplier_reference\": \"Q-311\",\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"quantity\": \"50\",\n      \"net_price\": \"125.00\"\n    },\n    {\n      \"material\": \"TG-1002\",\n      \"quantity\": \"20\",\n      \"net_price\": \"310.00\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('purchase_order_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Release purchase order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/orders/{{purchase_order_id}}/release/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "orders",
+                "{{purchase_order_id}}",
+                "release",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Goods receipt against the order (inventory_manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/goods-receipts/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "goods-receipts",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchase_order\": \"PO00000001\",\n  \"receipt_date\": \"2026-05-11\",\n  \"delivery_note\": \"DN-55\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('goods_receipt_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GR/IR report (accountant)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/reports/gr-ir/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "reports",
+                "gr-ir",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Supplier invoice, three-way match (accountant)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/invoices/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "invoices",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchase_order\": \"PO00000001\",\n  \"supplier_reference\": \"HS-9001\",\n  \"invoice_date\": \"2026-05-15\",\n  \"items\": [\n    {\n      \"item_number\": 10,\n      \"quantity\": \"50\",\n      \"net_price\": \"128.00\"\n    },\n    {\n      \"item_number\": 20,\n      \"quantity\": \"20\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('supplier_invoice_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supplier open items",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/reports/open-items/?company_code=1000&type=supplier",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "reports",
+                "open-items",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "type",
+                  "value": "supplier"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Outgoing payment, oldest first",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/outgoing-payments/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "outgoing-payments",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"supplier\": \"{{supplier_bp}}\",\n  \"payment_date\": \"2026-06-10\",\n  \"amount\": \"14490.00\",\n  \"bank_account\": \"1000\",\n  \"reference\": \"EFT-77\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Payables ageing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/reports/payables-ageing/?company_code=1000&as_of=2026-07-31",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "reports",
+                "payables-ageing",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "as_of",
+                  "value": "2026-07-31"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Payables reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/reports/payables-reconciliation/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "reports",
+                "payables-reconciliation",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel supplier invoice (while unpaid)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/invoices/{{supplier_invoice_id}}/cancel/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "invoices",
+                "{{supplier_invoice_id}}",
+                "cancel",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"posting_date\": \"2026-05-16\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reverse goods receipt (until invoiced)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/purchasing/goods-receipts/{{goods_receipt_id}}/reverse/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "purchasing",
+                "goods-receipts",
+                "{{goods_receipt_id}}",
+                "reverse",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
             }
           }
         }

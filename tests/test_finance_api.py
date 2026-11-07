@@ -187,7 +187,7 @@ def test_gl_account_crud_and_protection(demo, finance_manager, accountant):
     assert created.data["is_balance_sheet"] is False
     assert accountant.post("/api/finance/gl-accounts/", {**payload, "number": "6400"},
                            format="json").status_code == 403
-    assert finance_manager.get("/api/finance/gl-accounts/", {"chart_of_accounts": "CAZA"}).data["count"] == 22
+    assert finance_manager.get("/api/finance/gl-accounts/", {"chart_of_accounts": "CAZA"}).data["count"] == 23
 
     used = demo.account("1000")
     assert finance_manager.delete(f"/api/finance/gl-accounts/{used.pk}/").status_code == 409

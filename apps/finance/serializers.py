@@ -226,19 +226,19 @@ class AllocationSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=18, decimal_places=2)
 
 
-class IncomingPaymentSerializer(serializers.Serializer):
-    """A customer payment. Without allocations it clears the customer's oldest open items first."""
-
+class _PaymentSerializer(serializers.Serializer):
     company_code = serializers.SlugRelatedField(
         slug_field="code", queryset=CompanyCode.objects.select_related("currency", "chart_of_accounts")
     )
-    customer = serializers.SlugRelatedField(slug_field="number", queryset=BusinessPartner.objects.all())
     payment_date = serializers.DateField()
     amount = serializers.DecimalField(max_digits=18, decimal_places=2)
     bank_account = serializers.CharField(max_length=10)
     reference = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
     header_text = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     allocations = AllocationSerializer(many=True, required=False)
+
+    partner_field = ""  # "customer" or "supplier"
+    service = None
 
     def validate(self, attrs):
         chart = attrs["company_code"].chart_of_accounts
@@ -253,11 +253,27 @@ class IncomingPaymentSerializer(serializers.Serializer):
         data = self.validated_data
         allocations = data.get("allocations")
         try:
-            return services.post_incoming_payment(
-                company_code=data["company_code"], customer=data["customer"], payment_date=data["payment_date"],
+            return type(self).service(
+                company_code=data["company_code"], payment_date=data["payment_date"],
                 amount=data["amount"], bank_account=data["bank_account"], reference=data["reference"],
-                header_text=data["header_text"], user=user,
+                header_text=data["header_text"], user=user, **{self.partner_field: data[self.partner_field]},
                 allocations=[(a["line_id"], a["amount"]) for a in allocations] if allocations is not None else None,
             )
         except services.PostingError as exc:
             raise serializers.ValidationError({"non_field_errors": [str(exc)]}) from exc
+
+
+class IncomingPaymentSerializer(_PaymentSerializer):
+    """A customer payment. Without allocations it clears the customer's oldest open items first."""
+
+    customer = serializers.SlugRelatedField(slug_field="number", queryset=BusinessPartner.objects.all())
+    partner_field = "customer"
+    service = staticmethod(services.post_incoming_payment)
+
+
+class OutgoingPaymentSerializer(_PaymentSerializer):
+    """A payment to a supplier. Without allocations it clears the supplier's oldest open items first."""
+
+    supplier = serializers.SlugRelatedField(slug_field="number", queryset=BusinessPartner.objects.all())
+    partner_field = "supplier"
+    service = staticmethod(services.post_outgoing_payment)

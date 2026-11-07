@@ -18,8 +18,8 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 | 1 | Org structure, Business Partner, Material master, Finance core (Universal Journal, fiscal periods, VAT) | Done |
 | 2a | Stock-movement ledger: movement types, moving-average valuation, automatic journal postings, stock reconciliation | Done |
 | 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment, open items and ageing | Done |
-| 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment | Next |
-| 3 | HR and payroll posting, cost and profit centres | Planned |
+| 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment, GR/IR | Done |
+| 3 | HR and payroll posting, cost and profit centres | Next |
 | 4 | Analytics layer and BI dashboards | Planned |
 | 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
 
@@ -117,7 +117,7 @@ Sales order --> Delivery --------------> Invoice --------------------------> Pay
 | Numbering | `SO`, `DL` and `IN` numbers run continuously per company code; accounting documents keep their yearly `WA`, `DR`, `DZ` ranges |
 
 The Wave 0 sales `Customer`/`SalesOrder` and inventory `Product` models were retired in this wave
-(migration `sales/0002_retire_wave0_sales_models`). Purchasing and HR are reserved for Waves 2c and 3.
+(migration `sales/0002_retire_wave0_sales_models`).
 
 ### Order to cash in five calls
 
@@ -135,17 +135,59 @@ Result: order `SO00000001` (R2,988.00 net), delivery `DL00000001` with goods iss
 (cost of sales R1,800), invoice `IN00000001` / `DR00000002` (R2,988.00 + R448.20 VAT = R3,436.20),
 payment `DZ00000001` clearing the oldest open items first.
 
+## What Wave 2c delivers
+
+```
+Purchase order --> Goods receipt ---------> Supplier invoice -----------------------> Payment
+ (supplier,        101 at the order price:   three-way match (order, receipt, invoice)  Dr Payables
+  price, VAT)      Dr Inventory              Dr GR/IR (order price)                     Cr Bank
+                   Cr GR/IR                  Dr/Cr Price differences                    clears the open item
+                                             Dr VAT input / Cr Payables (gross)
+```
+
+| Area | What exists |
+|---|---|
+| Purchase orders | On Business Partner (supplier role) and Material, per purchasing organisation; price per item, receiving storage location and input VAT code defaulted; OPEN (editable) -> RELEASED -> COMPLETED, or CANCELLED; received and invoiced quantities derived from the documents |
+| Goods receipts | Full or partial, per plant, into any storage location; post a 101 at the order price (Dr inventory / Cr GR/IR, supplier on the line); no over-delivery; reversible until invoiced |
+| Supplier invoices | Matched to the order and receipts: quantity never above received-not-invoiced, unit price within the tolerance (5% in the demo company), duplicate supplier invoice numbers rejected; GR/IR cleared at the order price, the difference to the price difference account (5300), input VAT per line, due date from the supplier's payment terms; cancellable while unpaid |
+| Payments and open items | Outgoing payments clear payables with the same rules as incoming payments; open items per supplier (`type=supplier`) |
+| Reports | Payables ageing, payables-to-ledger reconciliation, and the GR/IR report: goods received not invoiced per order item, checked against the GR/IR ledger balance |
+| Configuration | `PurchasingAccountSetting` per chart of accounts: default input VAT code, price difference account, price tolerance |
+| Numbering | `PO`, `GR` and `IV` numbers run continuously per company code; accounting documents keep their yearly `WE`, `KR`, `KZ` ranges |
+
+Design choice: because stock is valued at moving average, an invoice price difference goes to the
+price difference account rather than back into stock value, so the stock ledger and the inventory
+account always reconcile. Stock-value adjustment from invoices can follow with standard costing.
+
+### Procure to pay in five calls
+
+```http
+POST /api/purchasing/orders/                {"purchasing_organization": "1000", "supplier": "1000002", "order_date": "2026-05-04",
+                                             "items": [{"material": "TG-1001", "quantity": "50", "net_price": "125.00"},
+                                                       {"material": "TG-1002", "quantity": "20", "net_price": "310.00"}]}
+POST /api/purchasing/orders/1/release/
+POST /api/purchasing/goods-receipts/        {"purchase_order": "PO00000001", "receipt_date": "2026-05-11"}
+POST /api/purchasing/invoices/              {"purchase_order": "PO00000001", "supplier_reference": "HS-9001",
+                                             "invoice_date": "2026-05-15"}
+POST /api/finance/outgoing-payments/        {"company_code": "1000", "supplier": "1000002", "payment_date": "2026-06-10",
+                                             "amount": "14317.50", "bank_account": "1000"}
+```
+
+Result: order `PO00000001` (R12,450.00 net), receipt `GR00000001` with material document `MD00000002`
+and `WE00000002` (Dr inventory / Cr GR/IR R12,450), invoice `IV00000001` / `KR00000001`
+(R12,450.00 + R1,867.50 VAT = R14,317.50, GR/IR back to zero), payment `KZ00000001`.
+
 ## Role matrix
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close, payments), invoices, currencies and rates, business partners | sales orders, deliveries, inventory |
-| Accountant | journal entries, payments, invoices, business partners | finance configuration, sales orders, deliveries, inventory |
+| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
+| Accountant | journal entries, payments, customer and supplier invoices, business partners | finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
-| Inventory Manager | goods movements, delivery reversal, materials | deliveries |
-| Purchasing Officer | purchasing, business partners, materials | inventory |
+| Inventory Manager | goods movements, goods receipts, delivery reversal, materials | deliveries, purchase orders |
+| Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
 | HR Admin | hr | - |
-| Viewer | - | sales orders, deliveries, invoices, inventory |
+| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices |
 | Administrator / superuser | everything, including organisation structure | - |
 
 Every signed-in user can read organisation structure and master data.
@@ -167,6 +209,14 @@ Every signed-in user can read organisation structure and master data.
 | POST | `/api/sales/deliveries/<id>/reverse/` | Until invoiced |
 | GET, POST | `/api/sales/invoices/` | POST `{"delivery", "invoice_date"}`; filters `customer`, `status` |
 | POST | `/api/sales/invoices/<id>/cancel/` | While unpaid |
+| GET, POST | `/api/purchasing/orders/` | Filters `status`, `supplier` |
+| GET, PATCH | `/api/purchasing/orders/<id>/` | PATCH `{"items": [...]}` replaces items while OPEN; no PUT or DELETE |
+| POST | `/api/purchasing/orders/<id>/release/`, `/cancel/` | |
+| GET, POST | `/api/purchasing/goods-receipts/` | POST `{"purchase_order", "receipt_date"[, "delivery_note"][, "items": [{"item_number", "quantity", "storage_location"}]]}`; `?purchase_order=` |
+| POST | `/api/purchasing/goods-receipts/<id>/reverse/` | Until invoiced |
+| GET, POST | `/api/purchasing/invoices/` | POST `{"purchase_order", "supplier_reference", "invoice_date"[, "items": [{"item_number", "quantity", "net_price"}]]}`; filters `supplier`, `status` |
+| POST | `/api/purchasing/invoices/<id>/cancel/` | While unpaid |
+| GET | `/api/purchasing/reports/gr-ir/` | `?company_code=` |
 | CRUD | `/api/org/company-codes/<code>/`, `plants/<code>/`, `storage-locations/`, `sales-organizations/<code>/`, `purchasing-organizations/<code>/` | |
 | CRUD | `/api/masterdata/currencies/<code>/`, `exchange-rates/`, `units/<code>/` | |
 | CRUD | `/api/masterdata/business-partners/<number>/` | `?search=` by name; number assigned by the system |
@@ -180,9 +230,11 @@ Every signed-in user can read organisation structure and master data.
 | POST | `/api/finance/journal-entries/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/finance/reports/trial-balance/` | `?company_code=1000&fiscal_year=2027[&period_from=&period_to=]` |
 | POST | `/api/finance/incoming-payments/` | Optional `allocations: [{"line_id", "amount"}]`; otherwise oldest first |
-| GET | `/api/finance/reports/open-items/` | `?company_code=&business_partner=&include_cleared=` |
+| POST | `/api/finance/outgoing-payments/` | Same shape with `supplier` instead of `customer` |
+| GET | `/api/finance/reports/open-items/` | `?company_code=&type=customer\|supplier&business_partner=&include_cleared=` |
 | GET | `/api/finance/reports/receivables-ageing/` | `?company_code=&as_of=` |
 | GET | `/api/finance/reports/receivables-reconciliation/` | `?company_code=` |
+| GET | `/api/finance/reports/payables-ageing/`, `payables-reconciliation/` | `?company_code=&as_of=` / `?company_code=` |
 | GET, POST | `/api/inventory/goods-movements/` | POST posts; filters `plant`, `movement_type`, `material`, `status` |
 | POST | `/api/inventory/goods-movements/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/inventory/stock/` | `?plant=&material=` |
@@ -237,7 +289,8 @@ apps/
                payments; services.py holds the posting rules; setup_demo_company command
   inventory/   Stock ledger: material documents, valuation, account determination
   sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
-  purchasing/ hr/    Reserved for Waves 2c and 3
+  purchasing/  Purchase orders, goods receipts, supplier invoices, GR/IR; services.py holds procure-to-pay
+  hr/          Reserved for Wave 3
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery
 tests/         pytest suite
 ```

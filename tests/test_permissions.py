@@ -1,4 +1,4 @@
-"""The role matrix across modules (design document section 3, extended in Waves 1-2b).
+"""The role matrix across modules (design document section 3, extended in Waves 1-2c).
 
 A request that passes the permission check returns anything except 403 (often 400 here,
 because the test sends an empty body); a request that fails it returns 403.
@@ -18,6 +18,11 @@ MOVEMENTS = "/api/inventory/goods-movements/"
 JOURNAL = "/api/finance/journal-entries/"
 PAYMENTS = "/api/finance/incoming-payments/"
 MATERIALS = "/api/masterdata/materials/"
+PURCHASE_ORDERS = "/api/purchasing/orders/"
+RECEIPTS = "/api/purchasing/goods-receipts/"
+SUPPLIER_INVOICES = "/api/purchasing/invoices/"
+GR_IR = "/api/purchasing/reports/gr-ir/"
+SUPPLIER_PAYMENTS = "/api/finance/outgoing-payments/"
 
 R, W = "get", "post"
 
@@ -41,8 +46,20 @@ R, W = "get", "post"
         # Accountant: journal, billing and payments
         (Role.ACCOUNTANT, JOURNAL, W, True), (Role.ACCOUNTANT, INVOICES, W, True),
         (Role.ACCOUNTANT, PAYMENTS, W, True), (Role.ACCOUNTANT, DELIVERIES, R, True),
-        # Purchasing officer: reads stock only (purchasing arrives in Wave 2c)
+        # Purchasing officer: orders and receipts; reads stock and supplier invoices; never posts or pays them
+        (Role.PURCHASING_OFFICER, PURCHASE_ORDERS, W, True), (Role.PURCHASING_OFFICER, RECEIPTS, W, True),
+        (Role.PURCHASING_OFFICER, SUPPLIER_INVOICES, R, True), (Role.PURCHASING_OFFICER, GR_IR, R, True),
+        (Role.PURCHASING_OFFICER, SUPPLIER_INVOICES, W, False),
+        (Role.PURCHASING_OFFICER, SUPPLIER_PAYMENTS, W, False),
         (Role.PURCHASING_OFFICER, MOVEMENTS, R, True), (Role.PURCHASING_OFFICER, ORDERS, R, False),
+        # Procure-to-pay from the other side: the warehouse receives, finance invoices and pays
+        (Role.INVENTORY_MANAGER, RECEIPTS, W, True), (Role.INVENTORY_MANAGER, PURCHASE_ORDERS, R, True),
+        (Role.INVENTORY_MANAGER, PURCHASE_ORDERS, W, False), (Role.INVENTORY_MANAGER, SUPPLIER_INVOICES, R, False),
+        (Role.ACCOUNTANT, SUPPLIER_INVOICES, W, True), (Role.ACCOUNTANT, SUPPLIER_PAYMENTS, W, True),
+        (Role.ACCOUNTANT, PURCHASE_ORDERS, R, True), (Role.ACCOUNTANT, PURCHASE_ORDERS, W, False),
+        (Role.ACCOUNTANT, RECEIPTS, W, False), (Role.FINANCE_MANAGER, SUPPLIER_INVOICES, W, True),
+        (Role.SALES_REP, PURCHASE_ORDERS, R, False), (Role.SALES_REP, SUPPLIER_INVOICES, R, False),
+        (Role.VIEWER, PURCHASE_ORDERS, R, True), (Role.VIEWER, PURCHASE_ORDERS, W, False),
         # HR admin: nothing outside HR
         (Role.HR_ADMIN, ORDERS, R, False), (Role.HR_ADMIN, MOVEMENTS, R, False), (Role.HR_ADMIN, JOURNAL, R, False),
         # Viewer: read only
