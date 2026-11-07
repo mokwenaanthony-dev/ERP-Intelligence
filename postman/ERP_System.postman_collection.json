@@ -1551,6 +1551,321 @@
       ]
     },
     {
+      "name": "Analytics (login as finance_manager)",
+      "item": [
+        {
+          "name": "Income statement",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/income-statement/?company_code=1000&fiscal_year=2027",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "income-statement",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Income statement, Trading profit centre, Q1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/income-statement/?company_code=1000&fiscal_year=2027&profit_center=PC1000&period_from=1&period_to=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "income-statement",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                },
+                {
+                  "key": "profit_center",
+                  "value": "PC1000"
+                },
+                {
+                  "key": "period_from",
+                  "value": "1"
+                },
+                {
+                  "key": "period_to",
+                  "value": "3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Balance sheet end of period 3",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/balance-sheet/?company_code=1000&fiscal_year=2027&period=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "balance-sheet",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                },
+                {
+                  "key": "period",
+                  "value": "3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sales margin by customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/sales-margin/?company_code=1000&fiscal_year=2027&group_by=customer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "sales-margin",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                },
+                {
+                  "key": "group_by",
+                  "value": "customer"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sales margin by material",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/sales-margin/?company_code=1000&fiscal_year=2027&group_by=material",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "sales-margin",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                },
+                {
+                  "key": "group_by",
+                  "value": "material"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stock ageing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/stock-ageing/?company_code=1000&slow_after_days=90",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "stock-ageing",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "slow_after_days",
+                  "value": "90"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Payroll cost by cost centre",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/payroll-cost/?company_code=1000&by_cost_center=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "payroll-cost",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "by_cost_center",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "refresh",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh now",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "refresh",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Organisation & master data",
       "item": [
         {

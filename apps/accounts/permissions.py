@@ -153,3 +153,25 @@ PayrollPermission = RolePermission.build(
     write=(Role.HR_ADMIN, Role.FINANCE_MANAGER),
     read=(Role.ACCOUNTANT,),
 )
+
+# --- Wave 4a -------------------------------------------------------------------
+
+# Management reports. Financial statements: finance only. Margins: finance and sales. Stock ageing:
+# finance and logistics. Payroll cost: finance manager and HR (a cost centre with one person
+# would reveal that person's pay). Refreshing the views: finance manager.
+FinancialReportPermission = RolePermission.build(
+    "FinancialReportPermission", read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT),
+)
+MarginReportPermission = RolePermission.build(
+    "MarginReportPermission", read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP),
+)
+StockReportPermission = RolePermission.build(
+    "StockReportPermission",
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER, Role.PURCHASING_OFFICER),
+)
+PayrollReportPermission = RolePermission.build(
+    "PayrollReportPermission", read=(Role.FINANCE_MANAGER, Role.HR_ADMIN),
+)
+AnalyticsAdminPermission = RolePermission.build(
+    "AnalyticsAdminPermission", write=(Role.FINANCE_MANAGER,), read=(Role.ACCOUNTANT,),
+)

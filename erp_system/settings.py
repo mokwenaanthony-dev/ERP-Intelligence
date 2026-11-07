@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.organization",
     "apps.controlling",
+    "apps.analytics",
     "apps.masterdata",
     "apps.finance",
     "apps.inventory",
@@ -152,6 +153,10 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+# Celery beat: keep the analytics materialized views no more than 15 minutes behind.
+CELERY_BEAT_SCHEDULE = {
+    "refresh-analytics-views": {"task": "analytics.refresh_views", "schedule": 15 * 60},
+}
 
 # --- Logging (design document, section 4) -----------------------------------------
 # stdout plus a rotating file capped at 10 MB with 5 backups.

@@ -31,7 +31,7 @@ flowchart TB
 
     OUT --> PROJ["Projector worker (Celery) 🔜"]
     PROJ --> KG[("Knowledge graph 🔜<br/>semantic layer")]
-    Core --> AN[("Analytics layer 🔜<br/>materialized views, column store")]
+    Core --> AN[("Analytics layer ✅<br/>materialized views; column store later")]
 
     KG --> RAG["GraphRAG API for AI agents 🗺️"]
     KG --> APPS["Customer 360 · document flow ·<br/>supply-chain risk · BOM and digital twin"]
@@ -43,7 +43,7 @@ flowchart TB
 | Layer | Job | Technology | Status |
 |---|---|---|---|
 | **System of record** | Every business transaction, with the rules that make the books trustworthy: double entry, gap-free numbering, row locks, immutable documents corrected only by reversal | Django/DRF, PostgreSQL | ✅ Waves 0-3 |
-| **Analytics layer** | Totals over time: P&L and balance sheet by period, margin by customer and material, stock ageing, payroll cost trends | PostgreSQL materialized views, then a column store; BI dashboards | 🔜 Wave 4a |
+| **Analytics layer** | Totals over time: P&L and balance sheet by period, margin by customer and material, stock ageing, payroll cost trends | PostgreSQL materialized views (refreshed concurrently by Celery beat), then a column store; BI dashboards | ✅ Wave 4a (dashboards 🔜) |
 | **Knowledge graph** | Relationships: who is connected to what, across modules, at any depth | Graph database fed from the outbox | 🔜 Wave 4b |
 
 The relational core stays the single source of truth. The analytics layer and the knowledge graph are
@@ -135,7 +135,7 @@ Design rules:
 | Wave | Delivers | Why here |
 |---|---|---|
 | 0-3 ✅ | Foundation, Financials, Logistics (stock, order-to-cash, procure-to-pay), HR, payroll, Controlling | Every later layer reads from the books |
-| 4a 🔜 | Analytics: local PostgreSQL, materialized-view reporting, then dashboards | Needs the transaction history from Waves 1-3 |
+| 4a ✅ | Analytics: materialized-view reporting, income statement, balance sheet, margins, stock ageing, payroll cost; dashboards next | Needs the transaction history from Waves 1-3 |
 | 4b 🔜 | Knowledge graph: outbox, projector, ontology v1, Customer 360, document flow, supplier dependency, GraphRAG endpoint | Built on the same events the analytics layer uses |
 | 5 🗺️ | Production planning: bills of materials, routings, production orders | Needed for the BOM graph and the MES |
 | 6 🗺️ | MES integration: MQTT / Unified Namespace bridge, ISA-95 mapping to ERP postings | Needs production orders |
