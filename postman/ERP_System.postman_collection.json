@@ -1866,6 +1866,258 @@
       ]
     },
     {
+      "name": "Knowledge graph (login as accountant; context as sales_rep or hr_admin to see role filtering)",
+      "item": [
+        {
+          "name": "Graph status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/status/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "status",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Customer 360",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/customer-360/{{customer_bp}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "customer-360",
+                "{{customer_bp}}",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Document flow from a sales order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/document-flow/?company_code=1000&document=SO00000001",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "document-flow",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "document",
+                  "value": "SO00000001"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Document flow from a purchase order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/document-flow/?company_code=1000&document=PO00000001",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "document-flow",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "document",
+                  "value": "PO00000001"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Supplier dependency",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/supplier-dependency/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "supplier-dependency",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GraphRAG context for a sales order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/context/?label=SalesOrder&key=1000/SO00000001&depth=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "context",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "label",
+                  "value": "SalesOrder"
+                },
+                {
+                  "key": "key",
+                  "value": "1000/SO00000001"
+                },
+                {
+                  "key": "depth",
+                  "value": "2"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GraphRAG context for an employee (hr_admin only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/context/?label=Employee&key=1000/PN00000002&depth=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "context",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "label",
+                  "value": "Employee"
+                },
+                {
+                  "key": "key",
+                  "value": "1000/PN00000002"
+                },
+                {
+                  "key": "depth",
+                  "value": "3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rebuild graph (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/rebuild/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "rebuild",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Organisation & master data",
       "item": [
         {

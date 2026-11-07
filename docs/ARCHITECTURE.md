@@ -22,18 +22,18 @@ flowchart TB
         HR["HR and payroll"]
         CO["Controlling<br/>cost and profit centres"]
         PP["Production planning 🗺️"]
-        OUT[("Outbox of business events 🔜")]
+        OUT[("Outbox of business events ✅")]
         FI & LO & HR & CO & PP --> OUT
     end
 
     MES -- "confirmations, goods movements, scrap, machine hours" --> PP
     PP -- "production orders, BOMs, routings" --> MES
 
-    OUT --> PROJ["Projector worker (Celery) 🔜"]
-    PROJ --> KG[("Knowledge graph 🔜<br/>semantic layer")]
+    OUT --> PROJ["Projector worker (Celery) ✅"]
+    PROJ --> KG[("Knowledge graph ✅<br/>Neo4j semantic layer")]
     Core --> AN[("Analytics layer ✅<br/>materialized views; column store later")]
 
-    KG --> RAG["GraphRAG API for AI agents 🗺️"]
+    KG --> RAG["GraphRAG retrieval API ✅<br/>(agent integration 🗺️)"]
     KG --> APPS["Customer 360 · document flow ·<br/>supply-chain risk · BOM and digital twin"]
     AN --> BI["BI dashboards"]
 ```
@@ -44,7 +44,7 @@ flowchart TB
 |---|---|---|---|
 | **System of record** | Every business transaction, with the rules that make the books trustworthy: double entry, gap-free numbering, row locks, immutable documents corrected only by reversal | Django/DRF, PostgreSQL | ✅ Waves 0-3 |
 | **Analytics layer** | Totals over time: P&L and balance sheet by period, margin by customer and material, stock ageing, payroll cost trends | PostgreSQL materialized views (refreshed concurrently by Celery beat), then a column store; BI dashboards | ✅ Wave 4a (dashboards 🔜) |
-| **Knowledge graph** | Relationships: who is connected to what, across modules, at any depth | Graph database fed from the outbox | 🔜 Wave 4b |
+| **Knowledge graph** | Relationships: who is connected to what, across modules, at any depth | Neo4j 5.26 LTS fed from the transactional outbox | ✅ Wave 4b |
 
 The relational core stays the single source of truth. The analytics layer and the knowledge graph are
 **read models**: they are rebuilt from the core and never written to directly. Each answers the kind
@@ -72,7 +72,7 @@ Employee → position → org unit → cost centre → profit centre
 These links already exist as foreign keys. The knowledge graph makes them first-class nodes and
 edges, so they can be traversed, visualised and handed to an AI agent as grounded context.
 
-## Keeping the graph in sync: the outbox pattern 🔜
+## Keeping the graph in sync: the outbox pattern ✅
 
 1. Each service in `services.py` (post an invoice, receive goods, run payroll) writes an **event row**
    in the same database transaction as the business posting. If the posting rolls back, so does the
@@ -81,7 +81,7 @@ edges, so they can be traversed, visualised and handed to an AI agent as grounde
 3. Because posted documents are immutable and corrections are separate reversal documents, events
    are append-only. The graph can be rebuilt from scratch at any time by replaying them.
 
-## Knowledge graph, first version 🔜
+## Knowledge graph, first version ✅
 
 - **Nodes:** BusinessPartner (with Customer and Supplier roles), Material, Plant, StorageLocation,
   CompanyCode, CostCenter, ProfitCenter, Employee, Position, OrgUnit, and the business documents
@@ -96,10 +96,11 @@ edges, so they can be traversed, visualised and handed to an AI agent as grounde
   - **Document flow:** order → delivery → invoice → payment, and PO → receipt → invoice → payment,
     as a traversal.
   - **Supplier dependency:** materials bought from a single supplier, and the sales they feed.
-- **Graph database:** Neo4j (industry standard, Cypher), with Apache AGE (graph queries inside
-  PostgreSQL) as the lighter alternative. Decided at the start of Wave 4b.
+- **Graph database:** Neo4j 5.26 LTS (Community), chosen over Apache AGE for its tooling (Browser,
+  Cypher ecosystem) and recognition. Projection is state-based and idempotent, so the graph can be
+  rebuilt from the ERP at any time (`graph_rebuild`).
 
-## AI readiness: GraphRAG 🗺️
+## AI readiness: GraphRAG (retrieval ✅, agent 🗺️)
 
 Enterprise AI agents give unreliable answers when they guess at SQL over dozens of tables. Grounding
 them in the graph means an answer can be traced back to the real orders, invoices and partners it came
@@ -136,7 +137,7 @@ Design rules:
 |---|---|---|
 | 0-3 ✅ | Foundation, Financials, Logistics (stock, order-to-cash, procure-to-pay), HR, payroll, Controlling | Every later layer reads from the books |
 | 4a ✅ | Analytics: materialized-view reporting, income statement, balance sheet, margins, stock ageing, payroll cost; dashboards next | Needs the transaction history from Waves 1-3 |
-| 4b 🔜 | Knowledge graph: outbox, projector, ontology v1, Customer 360, document flow, supplier dependency, GraphRAG endpoint | Built on the same events the analytics layer uses |
+| 4b ✅ | Knowledge graph: outbox, projector, ontology v1, Customer 360, document flow, supplier dependency, GraphRAG retrieval endpoint | Built on the same events the analytics layer uses |
 | 5 🗺️ | Production planning: bills of materials, routings, production orders | Needed for the BOM graph and the MES |
 | 6 🗺️ | MES integration: MQTT / Unified Namespace bridge, ISA-95 mapping to ERP postings | Needs production orders |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |

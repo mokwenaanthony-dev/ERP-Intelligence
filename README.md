@@ -16,14 +16,14 @@ project (Rust edge agents, MQTT, Python) will keep shop-floor activity in step w
 the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, and an analytics layer with financial statements and margin analysis. 375 tests, 99% coverage, CI with linting, security scanning and dependency
-auditing. **Next:** the knowledge graph.
+cost and profit centres, and an analytics layer with financial statements and margin analysis. 400+ tests, 99% coverage, CI with linting, security scanning and dependency
+auditing, and a Neo4j knowledge graph fed by a transactional outbox. **Next:** production planning.
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design.
 
 ```mermaid
 flowchart LR
     MES["MES: Rust edge → MQTT → Python<br/>(planned)"] <-->|ISA-95 events| CORE
-    CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>(next)"]
+    CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>Neo4j (built)"]
     CORE --> AN["Analytics layer<br/>(built)"]
     KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · GraphRAG"]
     AN --> BI["BI dashboards"]
@@ -33,6 +33,11 @@ flowchart LR
 
 *Management overview in Metabase: eight months of generated trading (`seed_demo_activity`) read from the
 PostgreSQL materialized views. The dashboards are built as code by `scripts/metabase_setup.py`.*
+
+<img src="docs/img/knowledge-graph.png" alt="One customer's orders, deliveries, invoices and payments in the Neo4j knowledge graph" width="600">
+
+*The same ERP as a knowledge graph in Neo4j: one customer, the orders they placed, each order's
+delivery and invoice, and the payments that settled them, projected from the transactional outbox.*
 
 ## Roadmap
 
@@ -46,7 +51,7 @@ PostgreSQL materialized views. The dashboards are built as code by `scripts/meta
 | 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
 | 4a | Analytics layer: reporting views (materialized on PostgreSQL), income statement, balance sheet, margin analysis, stock ageing, payroll cost trend | Done |
 | 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
-| 4b | Knowledge graph: event outbox, graph projection, Customer 360, document flow, supplier dependency, GraphRAG API | Next |
+| 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware GraphRAG retrieval | Done |
 | 5 | Production planning: bills of materials, routings, production orders | Planned |
 | 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
 | 7 | CRM and SRM | Planned |
@@ -238,6 +243,29 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 4b delivers
+
+```
+Business service (post invoice, receive goods, ...)
+   |  same database transaction
+   v
+OutboxEvent  --(Celery beat, every 10 s)-->  projector: current state -> idempotent MERGEs  -->  Neo4j
+                                                                                                  |
+        Customer 360 · document flow · supplier dependency · GraphRAG context  <-- Cypher ---------+
+```
+
+| Area | What exists |
+|---|---|
+| Transactional outbox | Saves and deletes of projected records (and status changes made in bulk) write an `OutboxEvent` in the same transaction as the business change: no event without a commit, no commit without an event. Off unless `NEO4J_URI` is set |
+| Projection | State-based and idempotent: each event re-projects the record's current state with `MERGE`, so duplicates or out-of-order events cannot corrupt the graph; several events for one record collapse into one write; one bad record never blocks the rest (retried, marked failed after 5 attempts); if Neo4j is down, events wait. `graph_rebuild` rebuilds everything from the ERP tables |
+| Ontology v1 | 16 node types keyed by business keys (partner and material numbers, plant codes, `company/document number`): company codes, plants, profit and cost centres, business partners (with Customer/Supplier labels), materials, org units, positions, employees (no pay data), sales orders, deliveries, invoices, purchase orders, goods receipts, supplier invoices, payments |
+| Customer 360 | `GET /api/graph/customer-360/<number>/`: roles, orders by status, billed / paid / open / overdue, top materials, supplier activity, recent documents across modules |
+| Document flow | `GET /api/graph/document-flow/?company_code=1000&document=SO00000001`: everything upstream and downstream of any SO, DL, IN, PO, GR, IV, DZ or KZ document (SAP's document flow as a graph traversal) |
+| Supplier dependency | `GET /api/graph/supplier-dependency/?company_code=1000`: materials per supplier count, single-source flags, and which customers' sales depend on them |
+| GraphRAG retrieval | `GET /api/graph/context/?label=SalesOrder&key=1000/SO00000001&depth=2`: the entity's neighbourhood as grounded facts (subject, predicate, object, properties, text) for an AI agent |
+| Security | Each role sees only certain node types (e.g. employees only for HR); every node on every returned path must be visible to the caller, so an agent acting for a sales rep cannot reach HR data. Labels, types and property names are validated before they reach Cypher; all values are parameters |
+| Stack | Neo4j 5.26 LTS Community (rolling `5.26-community` tag) in Docker Compose (Browser on http://localhost:7474); CI runs the graph tests against a Neo4j service container |
+
 ## What Wave 4a+ delivers
 
 | Area | What exists |
@@ -313,6 +341,12 @@ Employee records and salaries are visible to HR only.
 | GET, POST | `/api/purchasing/invoices/` | POST `{"purchase_order", "supplier_reference", "invoice_date"[, "items": [{"item_number", "quantity", "net_price"}]]}`; filters `supplier`, `status` |
 | POST | `/api/purchasing/invoices/<id>/cancel/` | While unpaid |
 | GET | `/api/purchasing/reports/gr-ir/` | `?company_code=` |
+| GET | `/api/graph/status/` | Graph on/off, pending and failed outbox events |
+| GET | `/api/graph/customer-360/<number>/` | Business partner across modules (roles that see partners and sales orders) |
+| GET | `/api/graph/document-flow/` | `?company_code=&document=SO00000001` (or DL, IN, PO, GR, IV, DZ, KZ numbers) |
+| GET | `/api/graph/supplier-dependency/` | `?company_code=` |
+| GET | `/api/graph/context/` | `?label=&key=[&depth=1..3]`: GraphRAG retrieval, filtered by role |
+| POST | `/api/graph/rebuild/` | Administrators: rebuild the graph from the ERP tables |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
@@ -373,7 +407,11 @@ Full stack (PostgreSQL, Redis, Celery worker and beat) with Docker:
 docker compose up --build
 docker compose exec web python manage.py seed_data
 docker compose exec web python manage.py refresh_analytics   # beat does this every 15 minutes
+docker compose exec web python manage.py graph_rebuild       # beat keeps the graph current every 10 seconds
 ```
+
+Neo4j Browser: http://localhost:7474 (user `neo4j`, password `NEO4J_PASSWORD` from `.env`). Try
+`MATCH p=(:BusinessPartner)-[:PLACED]->(:SalesOrder)-[:DELIVERED_BY]->()-[:BILLED_BY]->()-[:PAID_BY]->() RETURN p LIMIT 25`.
 
 On SQLite the analytics views are ordinary views and always current; on PostgreSQL they are
 materialized and refreshed by Celery beat, `refresh_analytics` or `POST /api/analytics/refresh/`.
@@ -427,6 +465,7 @@ apps/
   sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
   purchasing/  Purchase orders, goods receipts, supplier invoices, GR/IR; services.py holds procure-to-pay
   analytics/   Reporting views (sql.py), read-only models, management reports, refresh and reporting-role commands
+  graph/       Knowledge graph: outbox, projection (ontology), Neo4j store, Cypher queries, role filtering
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule

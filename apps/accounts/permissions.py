@@ -175,3 +175,10 @@ PayrollReportPermission = RolePermission.build(
 AnalyticsAdminPermission = RolePermission.build(
     "AnalyticsAdminPermission", write=(Role.FINANCE_MANAGER,), read=(Role.ACCOUNTANT,),
 )
+
+# --- Wave 4b -------------------------------------------------------------------
+
+# Knowledge graph: every signed-in user may query it, but each query only returns the node types
+# their role may see (apps/graph/access.py). Rebuilding the graph is for administrators.
+GraphPermission = RolePermission.build("GraphPermission", read_all=True)
+GraphAdminPermission = RolePermission.build("GraphAdminPermission")

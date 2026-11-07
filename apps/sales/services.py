@@ -14,6 +14,7 @@ from django.db import transaction
 
 from apps.finance import services as finance
 from apps.finance.models import DocumentType, JournalLine, TaxCode
+from apps.graph import outbox
 from apps.inventory import services as inventory
 from apps.inventory.models import MovementType
 from apps.masterdata.models import CustomerRole, Material
@@ -257,6 +258,7 @@ def reverse_delivery(delivery: Delivery, *, posting_date: date | None = None, us
         raise SalesError(f"Delivery {delivery.delivery_number} has been invoiced; cancel the invoice first.")
     inventory.reverse_material_document(delivery.material_document, posting_date=posting_date, user=user)
     Delivery.objects.filter(pk=delivery.pk).update(status=Delivery.Status.REVERSED, updated_by=user)
+    outbox.emit(delivery)
     delivery.refresh_from_db()
     _refresh_completion(delivery.sales_order, user)
     return delivery
@@ -328,6 +330,7 @@ def cancel_invoice(invoice: Invoice, *, posting_date: date | None = None, user=N
         raise SalesError(f"Invoice {invoice.invoice_number} has payments; reverse the payment first.")
     finance.reverse_journal_entry(invoice.journal_entry, posting_date=posting_date, user=user)
     Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.Status.CANCELLED, updated_by=user)
+    outbox.emit(invoice)
     invoice.refresh_from_db()
     _refresh_completion(invoice.delivery.sales_order, user)
     return invoice
