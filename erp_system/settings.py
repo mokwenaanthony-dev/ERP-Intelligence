@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.organization",
     "apps.controlling",
     "apps.analytics",
+    "apps.graph",
     "apps.masterdata",
     "apps.finance",
     "apps.inventory",
@@ -156,7 +157,15 @@ CELERY_TIMEZONE = TIME_ZONE
 # Celery beat: keep the analytics materialized views no more than 15 minutes behind.
 CELERY_BEAT_SCHEDULE = {
     "refresh-analytics-views": {"task": "analytics.refresh_views", "schedule": 15 * 60},
+    "project-outbox-to-graph": {"task": "graph.process_outbox", "schedule": 10},
 }
+
+# --- Knowledge graph (Neo4j) --------------------------------------------------
+# Off unless NEO4J_URI is set: then business changes are written to the outbox and projected.
+NEO4J_URI = config("NEO4J_URI", default="")
+NEO4J_USER = config("NEO4J_USER", default="neo4j")
+NEO4J_PASSWORD = config("NEO4J_PASSWORD", default="")
+GRAPH_ENABLED = bool(NEO4J_URI)
 
 # --- Logging (design document, section 4) -----------------------------------------
 # stdout plus a rotating file capped at 10 MB with 5 backups.

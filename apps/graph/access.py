@@ -1,0 +1,30 @@
+"""Which node types each role may see in the graph: the API's role rules, carried over.
+
+Every graph query is filtered to these labels, including the GraphRAG context an AI agent receives,
+so an agent acting for a user can never see more than that user could through the API.
+"""
+from apps.accounts.models import Role
+
+from .projection import ALL_LABELS
+
+BASE = {"CompanyCode", "Plant", "Material", "ProfitCenter", "CostCenter"}
+SALES = {"BusinessPartner", "SalesOrder", "Delivery", "Invoice", "Payment"}
+PURCHASING = {"BusinessPartner", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice"}
+PEOPLE = {"OrgUnit", "Position", "Employee"}
+FINANCE = SALES | PURCHASING
+
+ROLE_LABELS = {
+    Role.FINANCE_MANAGER: BASE | FINANCE,
+    Role.ACCOUNTANT: BASE | FINANCE,
+    Role.SALES_REP: BASE | SALES,
+    Role.PURCHASING_OFFICER: BASE | PURCHASING,
+    Role.INVENTORY_MANAGER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
+    Role.HR_ADMIN: BASE | PEOPLE,
+    Role.VIEWER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
+}
+
+
+def allowed_labels(user) -> set:
+    if user.is_superuser or user.role == Role.ADMIN:
+        return set(ALL_LABELS)
+    return set(ROLE_LABELS.get(user.role, BASE))

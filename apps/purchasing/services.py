@@ -17,6 +17,7 @@ from django.db.models import Sum
 
 from apps.finance import services as finance
 from apps.finance.models import DocumentType, JournalEntry, JournalLine, TaxCode
+from apps.graph import outbox
 from apps.inventory import services as inventory
 from apps.inventory.models import AccountKey, InventoryAccountSetting, MovementType
 from apps.masterdata.models import Material, SupplierRole
@@ -262,6 +263,7 @@ def reverse_goods_receipt(receipt: GoodsReceipt, *, posting_date: date | None = 
             )
     inventory.reverse_material_document(receipt.material_document, posting_date=posting_date, user=user)
     GoodsReceipt.objects.filter(pk=receipt.pk).update(status=GoodsReceipt.Status.REVERSED, updated_by=user)
+    outbox.emit(receipt)
     receipt.refresh_from_db()
     _refresh_completion(receipt.purchase_order, user)
     return receipt
@@ -410,6 +412,7 @@ def cancel_supplier_invoice(invoice: SupplierInvoice, *, posting_date: date | No
         raise PurchasingError(f"Supplier invoice {invoice.invoice_number} has payments; reverse the payment first.")
     finance.reverse_journal_entry(invoice.journal_entry, posting_date=posting_date, user=user)
     SupplierInvoice.objects.filter(pk=invoice.pk).update(status=SupplierInvoice.Status.CANCELLED, updated_by=user)
+    outbox.emit(invoice)
     invoice.refresh_from_db()
     _refresh_completion(invoice.purchase_order, user)
     return invoice
