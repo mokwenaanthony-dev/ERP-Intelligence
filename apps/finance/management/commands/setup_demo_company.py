@@ -10,8 +10,9 @@ location and sales/purchasing organisations, a fiscal year with 12 open
 periods, sample business partners and materials, two sample postings (opening
 capital and a customer invoice with 15% VAT), inventory account determination
 opening stock in plant 1000 (posted to the journal as well), sales prices,
-revenue account determination and the purchasing settings (input VAT, price
-difference account, 5% invoice price tolerance).
+revenue account determination, the purchasing settings (input VAT, price
+difference account, 5% invoice price tolerance), profit and cost centres, an
+org chart with three employees and the payroll settings and SARS PAYE table.
 
 Safe to run more than once: existing records are left alone.
 """
@@ -41,6 +42,9 @@ from apps.organization.models import (
     SalesOrganization,
     StorageLocation,
 )
+from apps.controlling.models import CostCenter, PlantProfitCenter, ProfitCenter
+from apps.hr import services as hr
+from apps.hr.models import Employee, OrgUnit, PayeBracket, PayeTable, PayrollSetting, Position
 from apps.purchasing.models import PurchasingAccountSetting
 from apps.sales.models import RevenueAccountSetting, SalesPrice
 
@@ -61,6 +65,10 @@ ACCOUNTS = [
     ("2100", "VAT output", LIABILITY, None),
     ("2200", "Accrued expenses", LIABILITY, None),
     ("2300", "Goods received / invoice received clearing", LIABILITY, None),
+    ("2400", "PAYE payable", LIABILITY, None),
+    ("2410", "UIF payable", LIABILITY, None),
+    ("2420", "SDL payable", LIABILITY, None),
+    ("2500", "Salaries payable", LIABILITY, None),
     ("3000", "Share capital", EQUITY, None),
     ("3100", "Retained earnings", EQUITY, None),
     ("3200", "Inventory opening balances", EQUITY, None),
@@ -71,6 +79,8 @@ ACCOUNTS = [
     ("5200", "Inventory differences", EXPENSE, None),
     ("5300", "Purchase price differences", EXPENSE, None),
     ("6000", "Salaries and wages", EXPENSE, None),
+    ("6010", "UIF employer contributions", EXPENSE, None),
+    ("6020", "Skills development levy", EXPENSE, None),
     ("6100", "Rent", EXPENSE, None),
     ("6200", "Utilities", EXPENSE, None),
     ("6900", "Bank charges", EXPENSE, None),
@@ -88,6 +98,33 @@ TAX_CODES = [
 
 
 # account key -> account number (all material types)
+# Payroll accounts must always carry a cost centre.
+COST_CENTER_REQUIRED = ("6000", "6010", "6020")
+
+# SARS rates of tax for individuals, 2027 year of assessment (1 March 2026 - 28 February 2027):
+# (taxable income above, base tax, rate %). Source: sars.gov.za "Rates of tax for individuals".
+# Check SARS each year and load the new table before running payroll for March.
+PAYE_TABLES = {
+    2027: (Decimal("17820"), [
+        ("0", "0", "18"), ("245100", "44118", "26"), ("383100", "79998", "31"), ("530200", "125599", "36"),
+        ("695800", "185215", "39"), ("887000", "259783", "41"), ("1878600", "666339", "45"),
+    ]),
+}
+
+# code, name, profit centre / category
+PROFIT_CENTERS = [("PC1000", "Trading"), ("PC9000", "Corporate")]
+COST_CENTERS = [
+    ("1000", "Management", "PC9000", CostCenter.Category.MANAGEMENT),
+    ("2000", "Sales", "PC1000", CostCenter.Category.SALES),
+    ("3000", "Warehouse", "PC1000", CostCenter.Category.PRODUCTION),
+]
+# org unit code, name, cost centre, position code, title, employee first, last name, monthly salary
+ORG_CHART = [
+    ("EXEC", "Executive", "1000", "MD", "Managing director", "Thandi", "Nkosi", "85000.00"),
+    ("SALES", "Sales", "2000", "SREP", "Sales representative", "Sipho", "Dlamini", "32000.00"),
+    ("WH", "Warehouse", "3000", "WSUP", "Warehouse supervisor", "Lerato", "Mokoena", "18500.00"),
+]
+
 INVENTORY_ACCOUNTS = {
     AccountKey.INVENTORY: "1200",
     AccountKey.GR_IR: "2300",
@@ -126,6 +163,9 @@ class Command(BaseCommand):
                 defaults={"name": name, "account_type": account_type,
                           "reconciliation_type": recon or GLAccount.ReconciliationType.NONE},
             )
+        GLAccount.objects.filter(chart_of_accounts=chart, number__in=COST_CENTER_REQUIRED).update(
+            cost_center_required=True
+        )
         for code, description, tax_type, rate, account in TAX_CODES:
             TaxCode.objects.get_or_create(
                 chart_of_accounts=chart, code=code,
@@ -169,6 +209,8 @@ class Command(BaseCommand):
                       "price_difference_account": accounts["5300"], "price_tolerance_percent": Decimal("5.00")},
         )
 
+        self._controlling_and_hr(company, plant, accounts)
+
         today = date.today()
         year = fiscal_year or self._fiscal_year_containing(today, company.fiscal_year_start_month)
         fy = FiscalYear.objects.filter(company_code=company, year=year).first()
@@ -208,6 +250,46 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f"Demo company {company.code} ready: fiscal year {year}, chart {chart.code}, currency {company.currency}."
+        ))
+
+    def _controlling_and_hr(self, company, plant, accounts):
+        profit_centers = {
+            code: ProfitCenter.objects.get_or_create(company_code=company, code=code, defaults={"name": name})[0]
+            for code, name in PROFIT_CENTERS
+        }
+        cost_centers = {
+            code: CostCenter.objects.get_or_create(
+                company_code=company, code=code,
+                defaults={"name": name, "profit_center": profit_centers[pc], "category": category},
+            )[0]
+            for code, name, pc, category in COST_CENTERS
+        }
+        PlantProfitCenter.objects.get_or_create(plant=plant, defaults={"profit_center": profit_centers["PC1000"]})
+
+        for tax_year, (rebate, brackets) in PAYE_TABLES.items():
+            table, created = PayeTable.objects.get_or_create(tax_year=tax_year, defaults={"primary_rebate": rebate})
+            if created:
+                PayeBracket.objects.bulk_create([
+                    PayeBracket(table=table, lower_limit=Decimal(low), base_tax=Decimal(base), rate=Decimal(rate))
+                    for low, base, rate in brackets
+                ])
+        PayrollSetting.objects.get_or_create(company_code=company, defaults={
+            "salary_account": accounts["6000"], "uif_expense_account": accounts["6010"],
+            "sdl_expense_account": accounts["6020"], "paye_payable_account": accounts["2400"],
+            "uif_payable_account": accounts["2410"], "sdl_payable_account": accounts["2420"],
+            "net_pay_account": accounts["2500"],
+        })
+        if Employee.objects.filter(company_code=company).exists():
+            return
+        for unit_code, unit_name, cc, position_code, title, first, last, salary in ORG_CHART:
+            unit, _ = OrgUnit.objects.get_or_create(
+                company_code=company, code=unit_code, defaults={"name": unit_name, "cost_center": cost_centers[cc]}
+            )
+            position, _ = Position.objects.get_or_create(org_unit=unit, code=position_code, defaults={"title": title})
+            hr.create_employee(company_code=company, position=position, first_name=first, last_name=last,
+                               hire_date=date(2024, 3, 1), monthly_salary=Decimal(salary))
+        self.stdout.write(self.style.SUCCESS(
+            "Created profit centres, cost centres, org units, positions and 3 employees"
         ))
 
     @staticmethod

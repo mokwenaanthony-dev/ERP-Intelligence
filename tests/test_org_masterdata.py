@@ -170,7 +170,7 @@ def test_string_representations(demo):
 def test_setup_demo_company_is_repeatable(demo):
     call_command("setup_demo_company", "--fiscal-year", "2027", stdout=StringIO())
     assert CompanyCode.objects.count() == 1
-    assert GLAccount.objects.count() == 22
+    assert GLAccount.objects.count() == 28
     assert TaxCode.objects.count() == 5
     assert BusinessPartner.objects.count() == 2
     assert JournalEntry.objects.count() == 3

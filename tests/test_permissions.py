@@ -1,4 +1,4 @@
-"""The role matrix across modules (design document section 3, extended in Waves 1-2c).
+"""The role matrix across modules (design document section 3, extended in Waves 1-3).
 
 A request that passes the permission check returns anything except 403 (often 400 here,
 because the test sends an empty body); a request that fails it returns 403.
@@ -23,6 +23,10 @@ RECEIPTS = "/api/purchasing/goods-receipts/"
 SUPPLIER_INVOICES = "/api/purchasing/invoices/"
 GR_IR = "/api/purchasing/reports/gr-ir/"
 SUPPLIER_PAYMENTS = "/api/finance/outgoing-payments/"
+EMPLOYEES = "/api/hr/employees/"
+PAYROLL = "/api/hr/payroll-runs/"
+COST_CENTERS = "/api/controlling/cost-centers/"
+CO_REPORT = "/api/controlling/reports/cost-centers/"
 
 R, W = "get", "post"
 
@@ -60,6 +64,14 @@ R, W = "get", "post"
         (Role.ACCOUNTANT, RECEIPTS, W, False), (Role.FINANCE_MANAGER, SUPPLIER_INVOICES, W, True),
         (Role.SALES_REP, PURCHASE_ORDERS, R, False), (Role.SALES_REP, SUPPLIER_INVOICES, R, False),
         (Role.VIEWER, PURCHASE_ORDERS, R, True), (Role.VIEWER, PURCHASE_ORDERS, W, False),
+        # HR and controlling: HR keeps people and runs payroll; finance posts and reads payroll, owns centres
+        (Role.HR_ADMIN, EMPLOYEES, W, True), (Role.HR_ADMIN, PAYROLL, W, True), (Role.HR_ADMIN, COST_CENTERS, R, True),
+        (Role.HR_ADMIN, COST_CENTERS, W, False), (Role.HR_ADMIN, CO_REPORT, R, False),
+        (Role.FINANCE_MANAGER, PAYROLL, W, True), (Role.FINANCE_MANAGER, COST_CENTERS, W, True),
+        (Role.FINANCE_MANAGER, EMPLOYEES, R, False), (Role.ACCOUNTANT, PAYROLL, R, True),
+        (Role.ACCOUNTANT, PAYROLL, W, False), (Role.ACCOUNTANT, CO_REPORT, R, True),
+        (Role.ACCOUNTANT, COST_CENTERS, W, False), (Role.VIEWER, COST_CENTERS, R, True),
+        (Role.VIEWER, PAYROLL, R, False), (Role.SALES_REP, EMPLOYEES, R, False),
         # HR admin: nothing outside HR
         (Role.HR_ADMIN, ORDERS, R, False), (Role.HR_ADMIN, MOVEMENTS, R, False), (Role.HR_ADMIN, JOURNAL, R, False),
         # Viewer: read only

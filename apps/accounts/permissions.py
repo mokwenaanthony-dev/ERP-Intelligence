@@ -137,3 +137,19 @@ SupplierInvoicePermission = RolePermission.build(
     write=(Role.ACCOUNTANT, Role.FINANCE_MANAGER),
     read=(Role.PURCHASING_OFFICER, Role.VIEWER),
 )
+
+# --- Wave 3 --------------------------------------------------------------------
+
+# Cost and profit centres are master data: the Finance Manager maintains them, everyone can read them.
+ControllingPermission = RolePermission.build(
+    "ControllingPermission",
+    write=(Role.FINANCE_MANAGER,),
+    read_all=True,
+)
+
+# Payroll runs: HR calculates and posts payroll; finance can post and reverse it too and reads it.
+PayrollPermission = RolePermission.build(
+    "PayrollPermission",
+    write=(Role.HR_ADMIN, Role.FINANCE_MANAGER),
+    read=(Role.ACCOUNTANT,),
+)

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.controlling.models import CostCenter, ProfitCenter
 from apps.masterdata.models import BusinessPartner, Currency, Material
 from apps.organization.models import CompanyCode, Plant
 
@@ -34,7 +35,7 @@ class GLAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = GLAccount
         fields = ["id", "chart_of_accounts", "number", "name", "account_type", "reconciliation_type",
-                  "is_posting_blocked", "is_balance_sheet", *AUDIT_FIELDS]
+                  "is_posting_blocked", "cost_center_required", "is_balance_sheet", *AUDIT_FIELDS]
         read_only_fields = ["id", *AUDIT_FIELDS]
 
 
@@ -103,6 +104,8 @@ class JournalLineInputSerializer(serializers.Serializer):
     material = serializers.CharField(required=False, allow_blank=True)
     plant = serializers.CharField(required=False, allow_blank=True)
     tax_code = serializers.CharField(required=False, allow_blank=True)
+    cost_center = serializers.CharField(required=False, allow_blank=True)
+    profit_center = serializers.CharField(required=False, allow_blank=True)
     text = serializers.CharField(required=False, allow_blank=True, max_length=100)
 
     def validate_amount(self, value):
@@ -153,12 +156,25 @@ class JournalEntryCreateSerializer(serializers.Serializer):
                 ).first()
                 if tax_code is None:
                     errors["tax_code"] = f"Tax code {raw['tax_code']} not found in chart {chart.code}."
+            cost_center = profit_center = None
+            if raw.get("cost_center"):
+                cost_center = CostCenter.objects.select_related("profit_center").filter(
+                    company_code=company_code, code=raw["cost_center"]
+                ).first()
+                if cost_center is None:
+                    errors["cost_center"] = f"Cost centre {raw['cost_center']} not found in {company_code.code}."
+            if raw.get("profit_center"):
+                profit_center = ProfitCenter.objects.filter(
+                    company_code=company_code, code=raw["profit_center"]
+                ).first()
+                if profit_center is None:
+                    errors["profit_center"] = f"Profit centre {raw['profit_center']} not found in {company_code.code}."
             line_errors.append(errors)
             if not errors:
                 line_inputs.append(services.LineInput(
                     gl_account=account, debit_credit=raw["debit_credit"], amount=raw["amount"],
                     business_partner=partner, material=material, plant=plant, tax_code=tax_code,
-                    text=raw.get("text", ""),
+                    cost_center=cost_center, profit_center=profit_center, text=raw.get("text", ""),
                 ))
         if any(line_errors):
             raise serializers.ValidationError({"lines": line_errors})
@@ -187,12 +203,14 @@ class JournalLineSerializer(serializers.ModelSerializer):
     material = serializers.CharField(source="material.number", default=None)
     plant = serializers.CharField(source="plant.code", default=None)
     tax_code = serializers.CharField(source="tax_code.code", default=None)
+    cost_center = serializers.CharField(source="cost_center.code", default=None)
+    profit_center = serializers.CharField(source="profit_center.code", default=None)
 
     class Meta:
         model = JournalLine
         fields = ["line_number", "gl_account", "gl_account_name", "debit_credit", "amount", "currency",
                   "amount_local", "local_currency", "business_partner", "material", "plant", "tax_code",
-                  "is_tax_line", "text"]
+                  "cost_center", "profit_center", "is_tax_line", "text"]
         read_only_fields = fields
 
 
