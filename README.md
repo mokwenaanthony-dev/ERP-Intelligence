@@ -15,16 +15,16 @@ Customer 360, document flow, supply-chain risk and GraphRAG for enterprise AI ag
 project (Rust edge agents, MQTT, Python) will keep shop-floor activity in step with the books through
 the ISA-95 model.
 
-**Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll, and
-cost and profit centres. 344 tests, 99% coverage, CI with linting, security scanning and dependency
-auditing. **Next:** analytics, then the knowledge graph.
+**Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
+cost and profit centres, and an analytics layer with financial statements and margin analysis. 375 tests, 99% coverage, CI with linting, security scanning and dependency
+auditing. **Next:** BI dashboards, then the knowledge graph.
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design.
 
 ```mermaid
 flowchart LR
     MES["MES: Rust edge → MQTT → Python<br/>(planned)"] <-->|ISA-95 events| CORE
     CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>(next)"]
-    CORE --> AN["Analytics layer<br/>(next)"]
+    CORE --> AN["Analytics layer<br/>(built)"]
     KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · GraphRAG"]
     AN --> BI["BI dashboards"]
 ```
@@ -39,7 +39,8 @@ flowchart LR
 | 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment, open items and ageing | Done |
 | 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment, GR/IR | Done |
 | 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
-| 4a | Analytics layer: PostgreSQL materialized views, period reporting, BI dashboards | Next |
+| 4a | Analytics layer: reporting views (materialized on PostgreSQL), income statement, balance sheet, margin analysis, stock ageing, payroll cost trend | Done |
+| 4a+ | BI dashboards (Metabase) on the reporting views | Next |
 | 4b | Knowledge graph: event outbox, graph projection, Customer 360, document flow, supplier dependency, GraphRAG API | Next |
 | 5 | Production planning: bills of materials, routings, production orders | Planned |
 | 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
@@ -232,6 +233,31 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 4a delivers
+
+```
+Universal Journal, material documents, payroll results
+        |  plain SQL, one definition per view
+        v
+Reporting views (materialized on PostgreSQL, refreshed CONCURRENTLY every 15 min by Celery beat;
+                 ordinary live views on SQLite)
+  analytics_gl_period_balance   analytics_sales_margin   analytics_stock_position   analytics_payroll_cost
+        |
+        v
+Management reports (API): income statement · balance sheet · sales margin · stock ageing · payroll cost
+```
+
+| Area | What exists |
+|---|---|
+| Reporting views | Four views over the transactional tables, each with a unique `row_key`. On PostgreSQL they are materialized views with a unique index, refreshed `CONCURRENTLY` so readers are never blocked; on SQLite the same SQL is an ordinary view |
+| Refresh | Celery beat every 15 minutes (`celery_beat` service in Compose), `python manage.py refresh_analytics`, or `POST /api/analytics/refresh/`. Every report returns `materialized` and `data_as_of` so users know how current the numbers are |
+| Income statement | Revenue, cost of sales, gross margin and %, operating expenses, result; per-period trend; optionally per profit centre and period range |
+| Balance sheet | Assets, liabilities and equity at the end of any period, carried forward across years; result to date shown in equity until year-end closing exists; `balanced` check |
+| Margin analysis | Revenue, cost of sales and gross margin by customer, material or profit centre, straight from the journal (revenue from invoices, cost of sales from goods issues) |
+| Stock ageing | Stock on hand per material and plant, aged by days since the last receipt (0-30, 31-90, 91-180, over 180), with slow movers (no issue for N days) |
+| Payroll cost | Posted payroll per month, optionally per cost centre: headcount, gross, employer contributions, total cost |
+| Access | Statements: finance. Margins: finance and sales. Stock: finance, warehouse, purchasing. Payroll cost: finance manager and HR only (a one-person cost centre would reveal a salary). Refresh: finance manager |
+
 ## Role matrix
 
 | Role | Writes | Reads only |
@@ -273,6 +299,12 @@ Employee records and salaries are visible to HR only.
 | GET, POST | `/api/purchasing/invoices/` | POST `{"purchase_order", "supplier_reference", "invoice_date"[, "items": [{"item_number", "quantity", "net_price"}]]}`; filters `supplier`, `status` |
 | POST | `/api/purchasing/invoices/<id>/cancel/` | While unpaid |
 | GET | `/api/purchasing/reports/gr-ir/` | `?company_code=` |
+| GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
+| GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
+| GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
+| GET | `/api/analytics/stock-ageing/` | `?company_code=[&as_of=][&slow_after_days=90]` |
+| GET | `/api/analytics/payroll-cost/` | `?company_code=[&year=][&by_cost_center=true]` |
+| GET, POST | `/api/analytics/refresh/` | GET: when each view was refreshed; POST: refresh now (finance manager) |
 | CRUD | `/api/controlling/profit-centers/`, `cost-centers/`, `plant-profit-centers/` | `?company_code=`; cost centre's profit centre given by code |
 | GET | `/api/controlling/reports/cost-centers/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&cost_center=]` |
 | GET | `/api/controlling/reports/profit-centers/` | `?company_code=&fiscal_year=[&period_from=&period_to=]` |
@@ -321,12 +353,16 @@ python manage.py seed_data            # one user per role (password ChangeMe123!
 python manage.py runserver
 ```
 
-Full stack (PostgreSQL, Redis, Celery) with Docker:
+Full stack (PostgreSQL, Redis, Celery worker and beat) with Docker:
 
 ```bash
 docker compose up --build
 docker compose exec web python manage.py seed_data
+docker compose exec web python manage.py refresh_analytics   # beat does this every 15 minutes
 ```
+
+On SQLite the analytics views are ordinary views and always current; on PostgreSQL they are
+materialized and refreshed by Celery beat, `refresh_analytics` or `POST /api/analytics/refresh/`.
 
 ## Test and check
 
@@ -353,6 +389,7 @@ apps/
   inventory/   Stock ledger: material documents, valuation, account determination
   sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
   purchasing/  Purchase orders, goods receipts, supplier invoices, GR/IR; services.py holds procure-to-pay
+  analytics/   Reporting views (sql.py), read-only models, management reports, refresh task and command
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery

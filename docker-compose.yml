@@ -67,5 +67,14 @@ services:
       redis:
         condition: service_healthy
 
+  celery_beat:
+    build: .
+    command: celery -A erp_system beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
