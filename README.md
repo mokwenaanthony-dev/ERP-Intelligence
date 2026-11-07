@@ -6,9 +6,28 @@
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-A modular ERP platform built on Django/DRF, PostgreSQL, Redis and Celery, growing in tested waves
-toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended operations
-(CRM, SRM, SCM, PLM) and a columnar analytics layer.
+An ERP built to be **connected and AI-ready**, not just transactional. The core is an SAP-style
+modular monolith on Django/DRF and PostgreSQL: a Universal Journal that every module posts to,
+immutable documents, and business rules in a service layer. On top of it come two read models: an
+**analytics layer** for totals over time, and a **knowledge graph** that turns the links between
+partners, materials, documents and cost centres into a semantic layer. That graph supports
+Customer 360, document flow, supply-chain risk and GraphRAG for enterprise AI agents. A companion MES
+project (Rust edge agents, MQTT, Python) will keep shop-floor activity in step with the books through
+the ISA-95 model.
+
+**Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll, and
+cost and profit centres. 344 tests, 99% coverage, CI with linting, security scanning and dependency
+auditing. **Next:** analytics, then the knowledge graph.
+Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design.
+
+```mermaid
+flowchart LR
+    MES["MES: Rust edge → MQTT → Python<br/>(planned)"] <-->|ISA-95 events| CORE
+    CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>(next)"]
+    CORE --> AN["Analytics layer<br/>(next)"]
+    KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · GraphRAG"]
+    AN --> BI["BI dashboards"]
+```
 
 ## Roadmap
 
@@ -20,8 +39,13 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 | 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment, open items and ageing | Done |
 | 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment, GR/IR | Done |
 | 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
-| 4 | Analytics layer and BI dashboards | Next |
-| 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
+| 4a | Analytics layer: PostgreSQL materialized views, period reporting, BI dashboards | Next |
+| 4b | Knowledge graph: event outbox, graph projection, Customer 360, document flow, supplier dependency, GraphRAG API | Next |
+| 5 | Production planning: bills of materials, routings, production orders | Planned |
+| 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
+| 7 | CRM and SRM | Planned |
+| 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
+| 9 | PLM and digital twin | Planned |
 
 ## What Wave 0 delivers
 
