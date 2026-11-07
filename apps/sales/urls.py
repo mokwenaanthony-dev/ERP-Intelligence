@@ -1,3 +1,8 @@
+"""API routes for order-to-cash, mounted under ``/api/sales/`` in ``erp_system/urls.py``.
+
+The router builds the list, detail and action URLs from each viewset; the browsable API at each
+URL shows the fields and actions it accepts.
+"""
 from rest_framework.routers import DefaultRouter
 
 from . import views

@@ -1,3 +1,5 @@
+"""App configuration for goods movements and moving-average stock valuation.
+"""
 from django.apps import AppConfig
 
 

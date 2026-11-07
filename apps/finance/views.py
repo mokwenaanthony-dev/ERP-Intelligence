@@ -1,3 +1,10 @@
+"""REST API views for the general ledger.
+
+Views stay thin: they check the role, validate input with a serializer and call the service layer
+(``services.py``), which holds every business rule. A rule broken in the service raises
+``PostingError``; the serializer turns it into a 400 and ``apps.common.exceptions`` logs it with
+the file and line where it was raised.
+"""
 from datetime import date
 
 from rest_framework import mixins, serializers, status, viewsets

@@ -1,3 +1,5 @@
+"""App configuration for company codes, plants, storage locations, sales and purchasing organisations.
+"""
 from django.apps import AppConfig
 
 

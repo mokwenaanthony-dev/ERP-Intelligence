@@ -25,6 +25,7 @@ def _type(node, allowed):
 # --- Customer 360 ------------------------------------------------------------------------------
 
 def customer_360(number: str, allowed: set) -> dict | None:
+    """Everything connected to one business partner, filtered to the labels the caller may see."""
     read = get_store().read
     rows = read("MATCH (bp:BusinessPartner {key: $key}) "
                 "OPTIONAL MATCH (bp)-[r:CUSTOMER_OF|SUPPLIER_OF]->(c:CompanyCode) "

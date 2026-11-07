@@ -16,6 +16,8 @@ org_code = RegexValidator(r"^[A-Z0-9]{1,4}$", "Use 1-4 upper-case letters or dig
 
 
 class CompanyCode(AuditedModel):
+    """A legal entity with its own books, currency and chart of accounts."""
+
     code = models.CharField(max_length=4, unique=True, validators=[org_code])
     name = models.CharField(max_length=200)
     country = models.CharField(max_length=2, default="ZA", help_text="ISO 3166 country code.")
@@ -41,6 +43,8 @@ class CompanyCode(AuditedModel):
 
 
 class Plant(AuditedModel):
+    """A site (factory, warehouse, shop) of a company code where stock is held."""
+
     code = models.CharField(max_length=4, unique=True, validators=[org_code])
     name = models.CharField(max_length=200)
     company_code = models.ForeignKey(CompanyCode, on_delete=models.PROTECT, related_name="plants")
@@ -54,6 +58,8 @@ class Plant(AuditedModel):
 
 
 class StorageLocation(AuditedModel):
+    """A place inside a plant where stock is kept."""
+
     plant = models.ForeignKey(Plant, on_delete=models.PROTECT, related_name="storage_locations")
     code = models.CharField(max_length=4, validators=[org_code])
     name = models.CharField(max_length=200)
@@ -69,6 +75,8 @@ class StorageLocation(AuditedModel):
 
 
 class SalesOrganization(AuditedModel):
+    """The unit responsible for selling, belonging to one company code."""
+
     code = models.CharField(max_length=4, unique=True, validators=[org_code])
     name = models.CharField(max_length=200)
     company_code = models.ForeignKey(CompanyCode, on_delete=models.PROTECT, related_name="sales_organizations")
@@ -81,6 +89,8 @@ class SalesOrganization(AuditedModel):
 
 
 class PurchasingOrganization(AuditedModel):
+    """The unit responsible for buying, belonging to one company code."""
+
     code = models.CharField(max_length=4, unique=True, validators=[org_code])
     name = models.CharField(max_length=200)
     company_code = models.ForeignKey(

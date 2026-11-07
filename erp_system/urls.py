@@ -1,3 +1,5 @@
+"""Top-level URL map: the health check, JWT sign-in, refresh and logout, the admin, and each app's API.
+"""
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView

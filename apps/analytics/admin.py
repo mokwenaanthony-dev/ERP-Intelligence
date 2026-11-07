@@ -1,3 +1,5 @@
+"""Django admin for the refresh log: when each reporting view was last refreshed and how long it took.
+"""
 from django.contrib import admin
 
 from .models import RefreshLog

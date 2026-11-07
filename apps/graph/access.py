@@ -25,6 +25,7 @@ ROLE_LABELS = {
 
 
 def allowed_labels(user) -> set:
+    """Node labels this user may see in graph results, mirroring their API permissions."""
     if user.is_superuser or user.role == Role.ADMIN:
         return set(ALL_LABELS)
     return set(ROLE_LABELS.get(user.role, BASE))

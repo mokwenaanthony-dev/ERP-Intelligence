@@ -1,3 +1,8 @@
+"""API routes for management reporting, mounted under ``/api/analytics/`` in ``erp_system/urls.py``.
+
+The router builds the list, detail and action URLs from each viewset; the browsable API at each
+URL shows the fields and actions it accepts.
+"""
 from django.urls import path
 
 from . import views

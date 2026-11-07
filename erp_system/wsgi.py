@@ -1,3 +1,5 @@
+"""WSGI entry point used by Gunicorn in the Docker image.
+"""
 import os
 
 from django.core.wsgi import get_wsgi_application

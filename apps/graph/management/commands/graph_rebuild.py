@@ -1,3 +1,7 @@
+"""``manage.py graph_rebuild [--clear]``: rebuild the whole graph from the ERP tables.
+
+Safe to run at any time because projection is idempotent; use ``--clear`` after changing the ontology.
+"""
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 

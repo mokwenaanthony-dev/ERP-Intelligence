@@ -1,3 +1,8 @@
+"""Django admin screens for the general ledger.
+
+Posted documents are shown read-only: the admin is for looking things up and maintaining
+configuration, never for editing a posting (corrections go through reversal in the API).
+"""
 from django.contrib import admin
 
 from apps.common.admin import AuditedAdminMixin

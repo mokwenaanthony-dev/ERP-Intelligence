@@ -11,6 +11,7 @@ credits the supplier. Documents can be reversed (``reverse_goods_receipt``,
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+import logging
 
 from django.db import transaction
 from django.db.models import Sum
@@ -33,6 +34,8 @@ from .models import (
     SupplierInvoiceItem,
 )
 
+logger = logging.getLogger(__name__)
+
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 HUNDRED = Decimal("100")
@@ -49,6 +52,8 @@ class PurchasingError(finance.PostingError):
 
 @dataclass
 class OrderItemInput:
+    """One item of a purchase order to create."""
+
     material: Material
     quantity: Decimal
     net_price: Decimal
@@ -59,6 +64,8 @@ class OrderItemInput:
 
 @dataclass
 class ReceiptItemInput:
+    """One item of a goods receipt to post."""
+
     order_item: PurchaseOrderItem
     quantity: Decimal
     storage_location: StorageLocation | None = None  # defaults to the order item's storage location
@@ -66,6 +73,8 @@ class ReceiptItemInput:
 
 @dataclass
 class InvoiceItemInput:
+    """One item of a supplier invoice to post. Leave ``net_price`` empty to use the order price."""
+
     order_item: PurchaseOrderItem
     quantity: Decimal
     net_price: Decimal | None = None  # None = the order price
@@ -74,6 +83,7 @@ class InvoiceItemInput:
 # --- Configuration and partner checks -----------------------------------------------------
 
 def purchasing_setting(company_code) -> PurchasingAccountSetting:
+    """The purchasing account setting for the company code's chart of accounts."""
     setting = PurchasingAccountSetting.objects.select_related(
         "default_tax_code__gl_account", "price_difference_account"
     ).filter(chart_of_accounts=company_code.chart_of_accounts).first()
@@ -135,6 +145,7 @@ def _build_items(order, items: list[OrderItemInput], user):
 def create_purchase_order(*, purchasing_organization, supplier, order_date: date, items: list[OrderItemInput],
                           delivery_date: date | None = None, supplier_reference: str = "",
                           user=None) -> PurchaseOrder:
+    """Create an OPEN purchase order for a supplier of the company code."""
     company_code = purchasing_organization.company_code
     _supplier_role(company_code, supplier)
     order = PurchaseOrder.objects.create(
@@ -143,11 +154,14 @@ def create_purchase_order(*, purchasing_organization, supplier, order_date: date
         supplier_reference=supplier_reference, created_by=user, updated_by=user,
     )
     _build_items(order, items, user)
+    logger.info("Created purchase order %s for supplier %s: %d item(s)",
+                order.order_number, supplier.number, len(items))
     return order
 
 
 @transaction.atomic
 def replace_order_items(order: PurchaseOrder, items: list[OrderItemInput], user=None) -> PurchaseOrder:
+    """Replace every item of an OPEN purchase order."""
     order = PurchaseOrder.objects.select_for_update().get(pk=order.pk)
     if order.status != PurchaseOrder.Status.OPEN:
         raise PurchasingError(f"Items can only change while the order is OPEN (it is {order.status}).")
@@ -155,6 +169,7 @@ def replace_order_items(order: PurchaseOrder, items: list[OrderItemInput], user=
     _build_items(order, items, user)
     order.updated_by = user
     order.save(update_fields=["updated_by", "updated_at"])
+    logger.info("Replaced the items of purchase order %s: %d item(s)", order.order_number, len(items))
     return order
 
 
@@ -162,11 +177,13 @@ def _set_status(order, status, user):
     order.status = status
     order.updated_by = user
     order.save(update_fields=["status", "updated_by", "updated_at"])
+    logger.info("Purchase order %s set to %s", order.order_number, status)
     return order
 
 
 @transaction.atomic
 def release_order(order: PurchaseOrder, user=None) -> PurchaseOrder:
+    """Release an OPEN purchase order so goods can be received against it."""
     order = PurchaseOrder.objects.select_for_update().get(pk=order.pk)
     if order.status != PurchaseOrder.Status.OPEN:
         raise PurchasingError(f"Only OPEN orders can be released (this one is {order.status}).")
@@ -176,6 +193,7 @@ def release_order(order: PurchaseOrder, user=None) -> PurchaseOrder:
 
 @transaction.atomic
 def cancel_order(order: PurchaseOrder, user=None) -> PurchaseOrder:
+    """Cancel a purchase order that has no posted receipts."""
     order = PurchaseOrder.objects.select_for_update().get(pk=order.pk)
     if order.status in (PurchaseOrder.Status.COMPLETED, PurchaseOrder.Status.CANCELLED):
         raise PurchasingError(f"A {order.status} order cannot be cancelled.")
@@ -245,6 +263,7 @@ def post_goods_receipt(order: PurchaseOrder, *, receipt_date: date, items: list[
                          quantity=item.quantity, value=value)
         for item, value in zip(items, values)
     ])
+    logger.info("Posted goods receipt %s for purchase order %s", receipt.receipt_number, order.order_number)
     return receipt
 
 
@@ -266,6 +285,7 @@ def reverse_goods_receipt(receipt: GoodsReceipt, *, posting_date: date | None = 
     outbox.emit(receipt)
     receipt.refresh_from_db()
     _refresh_completion(receipt.purchase_order, user)
+    logger.info("Reversed goods receipt %s", receipt.receipt_number)
     return receipt
 
 
@@ -393,6 +413,7 @@ def post_supplier_invoice(order: PurchaseOrder, *, invoice_date: date, supplier_
         for order_item, quantity, price, net, gr_ir, difference, tax in rows
     ])
     _refresh_completion(order, user)
+    logger.info("Posted supplier invoice %s for purchase order %s", invoice.invoice_number, order.order_number)
     return invoice
 
 
@@ -415,6 +436,7 @@ def cancel_supplier_invoice(invoice: SupplierInvoice, *, posting_date: date | No
     outbox.emit(invoice)
     invoice.refresh_from_db()
     _refresh_completion(invoice.purchase_order, user)
+    logger.info("Cancelled supplier invoice %s", invoice.invoice_number)
     return invoice
 
 

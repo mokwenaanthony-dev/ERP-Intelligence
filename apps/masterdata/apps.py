@@ -1,3 +1,5 @@
+"""App configuration for business partners, materials, currencies, units and exchange rates.
+"""
 from django.apps import AppConfig
 
 

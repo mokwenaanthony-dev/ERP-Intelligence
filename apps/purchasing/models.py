@@ -24,6 +24,8 @@ CENT = Decimal("0.01")
 
 
 class PurchasingAccountSetting(AuditedModel):
+    """Per chart of accounts: the default input VAT code and the price-difference account."""
+
     chart_of_accounts = models.OneToOneField(
         "finance.ChartOfAccounts", on_delete=models.PROTECT, related_name="purchasing_setting"
     )
@@ -49,6 +51,8 @@ class PurchasingAccountSetting(AuditedModel):
 
 
 class PurchaseOrder(AuditedModel):
+    """An order to a supplier. Received and invoiced quantities are derived from its documents."""
+
     class Status(models.TextChoices):
         OPEN = "OPEN", "Open"  # being entered; items can change
         RELEASED = "RELEASED", "Released"  # sent to the supplier; goods can be received
@@ -76,6 +80,7 @@ class PurchaseOrder(AuditedModel):
 
     @property
     def net_total(self) -> Decimal:
+        """Sum of the items' net amounts."""
         return sum((item.net_amount for item in self.items.all()), Decimal("0.00"))
 
     def __str__(self):
@@ -83,6 +88,8 @@ class PurchaseOrder(AuditedModel):
 
 
 class PurchaseOrderItem(AuditedModel):
+    """One material on a purchase order, with quantity, price, plant and storage location."""
+
     order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
     item_number = models.PositiveSmallIntegerField(help_text="10, 20, 30 ...")
     material = models.ForeignKey("masterdata.Material", on_delete=models.PROTECT, related_name="+")
@@ -106,6 +113,7 @@ class PurchaseOrderItem(AuditedModel):
 
     @property
     def net_amount(self) -> Decimal:
+        """Quantity times net price, rounded to cents."""
         return (self.quantity * self.net_price).quantize(CENT)
 
     def _posted_receipts(self):
@@ -116,14 +124,17 @@ class PurchaseOrderItem(AuditedModel):
 
     @property
     def received_quantity(self) -> Decimal:
+        """Quantity received on posted goods receipts (reversed receipts excluded)."""
         return Decimal(self._posted_receipts().aggregate(q=Sum("quantity"))["q"] or 0).quantize(QTY)
 
     @property
     def received_value(self) -> Decimal:
+        """Value posted to GR/IR by the posted goods receipts."""
         return Decimal(self._posted_receipts().aggregate(v=Sum("value"))["v"] or 0).quantize(CENT)
 
     @property
     def invoiced_quantity(self) -> Decimal:
+        """Quantity on posted supplier invoices (cancelled invoices excluded)."""
         return Decimal(self._posted_invoices().aggregate(q=Sum("quantity"))["q"] or 0).quantize(QTY)
 
     @property
@@ -146,6 +157,8 @@ class PurchaseOrderItem(AuditedModel):
 
 
 class GoodsReceipt(AuditedModel):
+    """Receipt of ordered goods (movement 101). Posts stock and GR/IR; reversed, not edited."""
+
     class Status(models.TextChoices):
         POSTED = "POSTED", "Posted"
         REVERSED = "REVERSED", "Reversed"
@@ -173,6 +186,8 @@ class GoodsReceipt(AuditedModel):
 
 
 class GoodsReceiptItem(models.Model):
+    """One received purchase order item."""
+
     receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="items")
     order_item = models.ForeignKey(PurchaseOrderItem, on_delete=models.PROTECT, related_name="receipt_items")
     storage_location = models.ForeignKey("organization.StorageLocation", on_delete=models.PROTECT, related_name="+")
@@ -187,6 +202,8 @@ class GoodsReceiptItem(models.Model):
 
 
 class SupplierInvoice(AuditedModel):
+    """A supplier's invoice matched to a purchase order and its receipts (three-way match)."""
+
     class Status(models.TextChoices):
         POSTED = "POSTED", "Posted"
         CANCELLED = "CANCELLED", "Cancelled"
@@ -219,6 +236,8 @@ class SupplierInvoice(AuditedModel):
 
 
 class SupplierInvoiceItem(models.Model):
+    """One invoiced purchase order item."""
+
     invoice = models.ForeignKey(SupplierInvoice, on_delete=models.CASCADE, related_name="items")
     order_item = models.ForeignKey(PurchaseOrderItem, on_delete=models.PROTECT, related_name="invoice_items")
     quantity = models.DecimalField(max_digits=18, decimal_places=3)

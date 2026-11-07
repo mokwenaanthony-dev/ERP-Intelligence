@@ -10,6 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+import logging
 
 from django.db import transaction
 from django.db.models import Sum
@@ -31,6 +32,8 @@ from .models import (
     MovementType,
 )
 
+logger = logging.getLogger(__name__)
+
 CENT = Decimal("0.01")
 ZERO_QTY = Decimal("0.000")
 ZERO = Decimal("0.00")
@@ -51,6 +54,8 @@ class StockError(PostingError):
 
 @dataclass
 class ItemInput:
+    """One item of a goods movement to post. Quantity is positive; the movement type gives the direction."""
+
     material: Material
     storage_location: StorageLocation
     quantity: Decimal  # positive, in the material's base unit
@@ -83,6 +88,7 @@ def plant_stock(material, plant) -> tuple[Decimal, Decimal]:
 
 
 def location_stock(material, storage_location) -> Decimal:
+    """Quantity of a material in one storage location."""
     total = MaterialDocumentItem.objects.filter(
         material=material, storage_location=storage_location
     ).aggregate(quantity=Sum("quantity"))["quantity"]
@@ -90,6 +96,7 @@ def location_stock(material, storage_location) -> Decimal:
 
 
 def moving_average_price(quantity: Decimal, value: Decimal) -> Decimal | None:
+    """Value divided by quantity, or None when there is no stock to price."""
     if quantity <= 0:
         return None
     return (value / quantity).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
@@ -105,6 +112,9 @@ def issue_value(quantity: Decimal, stock_quantity: Decimal, stock_value: Decimal
 # --- Account determination -------------------------------------------------------------
 
 def account_for(company_code, key: str, material_type: str) -> GLAccount:
+    """G/L account for an account key (e.g. BSX inventory, GBB offset) and material type; a
+    setting for the specific material type wins over the default (blank) one.
+    """
     settings = InventoryAccountSetting.objects.select_related("gl_account").filter(
         chart_of_accounts=company_code.chart_of_accounts, account_key=key, material_type__in=[material_type, ""]
     )
@@ -162,11 +172,13 @@ def _stock_effects(movement_type, plant, items):
     location_totals = {}
 
     def totals(material):
+        """Running plant totals for a material, loaded once per document."""
         if material.pk not in plant_totals:
             plant_totals[material.pk] = list(plant_stock(material, plant))
         return plant_totals[material.pk]
 
     def location_quantity(material, location):
+        """Running storage-location quantity for a material, loaded once per document."""
         key = (material.pk, location.pk)
         if key not in location_totals:
             location_totals[key] = location_stock(material, location)
@@ -279,6 +291,8 @@ def post_goods_movement(*, movement_type: str, plant: Plant, posting_date: date,
         )
         for number, (item, location, quantity, value) in enumerate(effects, start=1)
     ])
+    logger.info("Posted material document %s (movement %s) at plant %s: %d item(s)",
+                document.document_number, movement_type, plant.code, len(effects))
     return document
 
 
@@ -348,6 +362,7 @@ def reverse_material_document(document: MaterialDocument, *, posting_date: date 
         for item in items
     ])
     MaterialDocument.objects.filter(pk=document.pk).update(status=MaterialDocument.Status.REVERSED, updated_by=user)
+    logger.info("Reversed material document %s with %s", document.document_number, reversal.document_number)
     return reversal
 
 

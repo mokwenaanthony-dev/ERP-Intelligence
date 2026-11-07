@@ -1,3 +1,5 @@
+"""App configuration for cost centres, profit centres and their reports.
+"""
 from django.apps import AppConfig
 
 

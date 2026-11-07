@@ -33,6 +33,9 @@ def _company_child_key(obj):
     return f"{obj.company_code.code}/{obj.code}"
 
 
+# Each projector below takes the store ``g`` and one ERP record, and writes that record's node and
+# its outgoing relationships. ``PROJECTORS`` at the bottom maps each model to its projector.
+
 # --- master data -----------------------------------------------------------------------------
 
 def company_code(g, c):
@@ -197,6 +200,7 @@ PAYMENT_TYPES = {"DZ": "INCOMING", "KZ": "OUTGOING"}
 
 
 def payment_key(entry):
+    """Graph key of a payment: company/fiscal year/document number (payment numbers restart yearly)."""
     return f"{entry.company_code.code}/{entry.fiscal_year}/{entry.document_number}"
 
 
@@ -254,10 +258,12 @@ PROJECTORS = {
 
 
 def model_key(instance) -> str:
+    """``app_label.model`` of an instance, the key into ``PROJECTORS``."""
     return f"{instance._meta.app_label}.{instance._meta.model_name}"
 
 
 def project_instance(g, instance):
+    """Project one record that is already loaded (used by the full rebuild)."""
     projector, _ = PROJECTORS[model_key(instance)]
     projector(g, instance)
 

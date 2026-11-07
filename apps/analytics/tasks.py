@@ -1,3 +1,5 @@
+"""Celery task that refreshes the reporting views (scheduled every 15 minutes).
+"""
 from celery import shared_task
 
 from . import services

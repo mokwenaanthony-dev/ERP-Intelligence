@@ -22,6 +22,8 @@ MONEY = {"max_digits": 18, "decimal_places": 2}
 
 
 class OrgUnit(AuditedModel):
+    """A department or team in the organisation tree, optionally with its own cost centre."""
+
     company_code = models.ForeignKey("organization.CompanyCode", on_delete=models.PROTECT, related_name="+")
     code = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
@@ -43,6 +45,8 @@ class OrgUnit(AuditedModel):
 
 
 class Position(AuditedModel):
+    """A job slot in an org unit. Payroll cost goes to its cost centre, or the org unit's."""
+
     org_unit = models.ForeignKey(OrgUnit, on_delete=models.PROTECT, related_name="positions")
     code = models.CharField(max_length=10)
     title = models.CharField(max_length=100)
@@ -59,6 +63,7 @@ class Position(AuditedModel):
 
     @property
     def effective_cost_center(self):
+        """The position's own cost centre, otherwise the org unit's (None if neither is set)."""
         return self.cost_center or self.org_unit.cost_center
 
     def __str__(self):
@@ -66,6 +71,8 @@ class Position(AuditedModel):
 
 
 class Employee(AuditedModel):
+    """A person employed by a company code, holding one position. Pay data is HR-only."""
+
     company_code = models.ForeignKey("organization.CompanyCode", on_delete=models.PROTECT, related_name="+")
     personnel_number = models.CharField(max_length=12, editable=False)
     first_name = models.CharField(max_length=60)
@@ -90,6 +97,7 @@ class Employee(AuditedModel):
 
     @property
     def full_name(self) -> str:
+        """First and last name, for screens only (never logged or projected with pay data)."""
         return f"{self.first_name} {self.last_name}"
 
     def __str__(self):
@@ -129,6 +137,8 @@ class PayeBracket(models.Model):
 
 
 class PayrollSetting(AuditedModel):
+    """Per company code: the UIF and SDL rates and ceiling, and the G/L accounts payroll posts to."""
+
     company_code = models.OneToOneField("organization.CompanyCode", on_delete=models.PROTECT,
                                         related_name="payroll_setting")
     uif_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"),
@@ -151,6 +161,8 @@ class PayrollSetting(AuditedModel):
 
 
 class PayrollRun(AuditedModel):
+    """One posted month of payroll with its totals and journal entry. Reversed, not edited."""
+
     class Status(models.TextChoices):
         POSTED = "POSTED", "Posted"
         REVERSED = "REVERSED", "Reversed"
@@ -185,6 +197,8 @@ class PayrollRun(AuditedModel):
 
 
 class PayrollResult(models.Model):
+    """One employee's calculated amounts in a payroll run."""
+
     run = models.ForeignKey(PayrollRun, on_delete=models.CASCADE, related_name="results")
     employee = models.ForeignKey(Employee, on_delete=models.PROTECT, related_name="payroll_results")
     cost_center = models.ForeignKey("controlling.CostCenter", on_delete=models.PROTECT, related_name="+")

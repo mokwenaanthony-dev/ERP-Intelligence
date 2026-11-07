@@ -1,3 +1,5 @@
+"""App configuration for building blocks shared by every app.
+"""
 from django.apps import AppConfig
 
 

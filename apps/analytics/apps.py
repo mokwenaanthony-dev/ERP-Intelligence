@@ -1,3 +1,5 @@
+"""App configuration for management reporting.
+"""
 from django.apps import AppConfig
 
 

@@ -9,6 +9,8 @@ from django.db import models
 
 
 class TimeStampedModel(models.Model):
+    """Abstract base adding ``created_at`` and ``updated_at``."""
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -17,6 +19,8 @@ class TimeStampedModel(models.Model):
 
 
 class AuditedModel(TimeStampedModel):
+    """Abstract base adding who created and last changed the record (ISO 27001 traceability)."""
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

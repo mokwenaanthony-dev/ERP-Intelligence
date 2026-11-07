@@ -16,6 +16,8 @@ from apps.common.models import AuditedModel
 
 
 class Currency(AuditedModel):
+    """An ISO 4217 currency with its number of decimals."""
+
     code = models.CharField(max_length=3, unique=True, help_text="ISO 4217 code, e.g. ZAR.")
     name = models.CharField(max_length=100)
     decimal_places = models.PositiveSmallIntegerField(default=2)
@@ -29,6 +31,8 @@ class Currency(AuditedModel):
 
 
 class ExchangeRateNotFound(LookupError):
+    """No exchange rate is maintained for the currency pair on or before the date."""
+
     pass
 
 
@@ -75,6 +79,8 @@ class ExchangeRate(AuditedModel):
 
 
 class UnitOfMeasure(AuditedModel):
+    """A unit of measure such as EA, KG or HR."""
+
     code = models.CharField(max_length=3, unique=True, help_text="e.g. EA, KG, L, HR.")
     name = models.CharField(max_length=50)
 
@@ -88,6 +94,10 @@ class UnitOfMeasure(AuditedModel):
 
 
 class BusinessPartner(AuditedModel):
+    """A person or organisation the company deals with (SAP BP). Customer and supplier are
+    roles per company code, so one partner can be both.
+    """
+
     class Category(models.TextChoices):
         ORGANIZATION = "ORGANIZATION", "Organisation"
         PERSON = "PERSON", "Person"
@@ -112,6 +122,7 @@ class BusinessPartner(AuditedModel):
 
     def save(self, *args, **kwargs):
         # Numbers are assigned by the system, like SAP's internal number range.
+        """Give a new partner the next number from the partner range."""
         if self.number:
             return super().save(*args, **kwargs)
         with transaction.atomic():
@@ -120,9 +131,11 @@ class BusinessPartner(AuditedModel):
             type(self).objects.filter(pk=self.pk).update(number=self.number)
 
     def has_customer_role(self, company_code) -> bool:
+        """True if the partner is a customer of at least one company code."""
         return self.customer_roles.filter(company_code=company_code).exists()
 
     def has_supplier_role(self, company_code) -> bool:
+        """True if the partner is a supplier of at least one company code."""
         return self.supplier_roles.filter(company_code=company_code).exists()
 
     def __str__(self):
@@ -142,6 +155,8 @@ class _PartnerRole(AuditedModel):
 
 
 class CustomerRole(_PartnerRole):
+    """A partner's customer data in one company code: reconciliation account, terms, credit limit."""
+
     business_partner = models.ForeignKey(BusinessPartner, on_delete=models.CASCADE, related_name="customer_roles")
     credit_limit = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
 
@@ -155,6 +170,8 @@ class CustomerRole(_PartnerRole):
 
 
 class SupplierRole(_PartnerRole):
+    """A partner's supplier data in one company code: reconciliation account and terms."""
+
     business_partner = models.ForeignKey(BusinessPartner, on_delete=models.CASCADE, related_name="supplier_roles")
 
     class Meta:
@@ -167,6 +184,8 @@ class SupplierRole(_PartnerRole):
 
 
 class Material(AuditedModel):
+    """A product or service the company buys, makes, stocks or sells, with its type and base unit."""
+
     class MaterialType(models.TextChoices):
         TRADING_GOODS = "HAWA", "Trading goods"
         FINISHED = "FERT", "Finished product"

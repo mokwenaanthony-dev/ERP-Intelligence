@@ -1,3 +1,8 @@
+"""Serializers for HR and payroll: validate API input and shape API output.
+
+Input serializers check types and required fields only; business rules live in ``services.py``.
+Output serializers are read-only views of posted documents.
+"""
 from rest_framework import serializers
 
 from apps.controlling.models import CostCenter

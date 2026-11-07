@@ -1,3 +1,5 @@
+"""App configuration for HR and payroll.
+"""
 from django.apps import AppConfig
 
 

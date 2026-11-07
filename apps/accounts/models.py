@@ -19,6 +19,8 @@ class Role(models.TextChoices):
 
 
 class User(AbstractUser):
+    """An ERP user. ``role`` decides what each module's API lets them read and change."""
+
     role = models.CharField(
         max_length=32,
         choices=Role.choices,
@@ -27,6 +29,7 @@ class User(AbstractUser):
     )
 
     def has_role(self, *roles: str) -> bool:
+        """True if the user has any of the given roles, e.g. ``user.has_role(Role.HR_ADMIN)``."""
         return self.role in roles
 
     def __str__(self) -> str:

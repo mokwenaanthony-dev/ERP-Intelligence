@@ -1,3 +1,5 @@
+"""``manage.py graph_process``: project pending outbox events into Neo4j now (what Celery beat does every 10 s).
+"""
 from django.core.management.base import BaseCommand
 
 from apps.graph import processor

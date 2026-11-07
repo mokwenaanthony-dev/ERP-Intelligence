@@ -1,3 +1,5 @@
+"""App configuration for order-to-cash.
+"""
 from django.apps import AppConfig
 
 

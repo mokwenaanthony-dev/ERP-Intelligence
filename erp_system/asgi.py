@@ -1,3 +1,5 @@
+"""ASGI entry point (for async servers such as Uvicorn or Daphne).
+"""
 import os
 
 from django.core.asgi import get_asgi_application

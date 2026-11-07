@@ -126,16 +126,20 @@ VIEWS = {
 
 
 def is_postgres(connection) -> bool:
+    """True on PostgreSQL, where the views are materialized; SQLite gets plain (live) views."""
     return connection.vendor == "postgresql"
 
 
 def create_views(connection) -> None:
+    """Create every reporting view, with a unique ``row_key`` index on PostgreSQL so it can be
+    refreshed ``CONCURRENTLY`` (readers are never blocked).
+    """
     materialized = is_postgres(connection)
     kind = "MATERIALIZED VIEW" if materialized else "VIEW"
     with connection.cursor() as cursor:
         for name, (select, indexes) in VIEWS.items():
             # Names and SQL are module constants, never user input.
-            cursor.execute(f"CREATE {kind} {name} AS {select}")  # nosec B608
+            cursor.execute(f"CREATE {kind} {name} AS {select}")
             if materialized:
                 cursor.execute(f"CREATE UNIQUE INDEX {name}_row_key ON {name} (row_key)")
                 for number, columns in enumerate(indexes, start=1):
@@ -143,6 +147,7 @@ def create_views(connection) -> None:
 
 
 def drop_views(connection) -> None:
+    """Drop the reporting views in reverse order (used by the migration's reverse step)."""
     kind = "MATERIALIZED VIEW" if is_postgres(connection) else "VIEW"
     with connection.cursor() as cursor:
         for name in reversed(list(VIEWS)):

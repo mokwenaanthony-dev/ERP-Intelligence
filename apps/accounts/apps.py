@@ -1,3 +1,5 @@
+"""App configuration for the ERP's user model and its roles.
+"""
 from django.apps import AppConfig
 
 
