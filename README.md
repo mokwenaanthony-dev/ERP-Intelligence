@@ -19,8 +19,8 @@ toward an SAP-style suite: core ERP (Financials, Logistics, HR), then extended o
 | 2a | Stock-movement ledger: movement types, moving-average valuation, automatic journal postings, stock reconciliation | Done |
 | 2b | Order-to-Cash on Business Partner and Material: order, delivery, invoice, payment, open items and ageing | Done |
 | 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment, GR/IR | Done |
-| 3 | HR and payroll posting, cost and profit centres | Next |
-| 4 | Analytics layer and BI dashboards | Planned |
+| 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
+| 4 | Analytics layer and BI dashboards | Next |
 | 5-7 | CRM and SRM, SCM with ML demand forecasting, PLM | Planned |
 
 ## What Wave 0 delivers
@@ -177,20 +177,52 @@ Result: order `PO00000001` (R12,450.00 net), receipt `GR00000001` with material 
 and `WE00000002` (Dr inventory / Cr GR/IR R12,450), invoice `IV00000001` / `KR00000001`
 (R12,450.00 + R1,867.50 VAT = R14,317.50, GR/IR back to zero), payment `KZ00000001`.
 
+## What Wave 3 delivers
+
+```
+Org unit (cost centre) --> Position --> Employee --> Payroll run (one per month) --> Journal entry PY
+                                                     PAYE (SARS table), UIF, SDL     Dr salaries, UIF, SDL  per cost centre
+                                                                                      Cr PAYE / UIF / SDL payable, salaries payable
+Cost centre --> Profit centre <-- Plant           every journal line can carry both dimensions
+```
+
+| Area | What exists |
+|---|---|
+| Controlling | Profit centres and cost centres per company code (cost centre categories, active flag); plants default to a profit centre |
+| Journal dimensions | Every journal line can carry a cost centre and a profit centre. The profit centre is derived from the cost centre, else the plant, so stock, cost of sales, revenue and price differences land on a profit centre automatically. Cost centres only on expense accounts; accounts can require one (payroll accounts do); reversals keep both |
+| Reports | Cost centre actuals per cost element (expense account), profit centre result (revenue, expenses, result, with an "Unassigned" line), both by fiscal year and period range |
+| HR | Org units (hierarchy, cost centre), positions (cost centre override), employees with system-assigned personnel numbers, hire and termination dates and monthly salary; HR admin only |
+| Payroll | One run per company code and month for everyone employed in it: PAYE from the SARS table for the year of assessment (2027 table loaded, primary rebate), UIF 1% + 1% up to the R17,712 ceiling, SDL 1%; posts one journal entry (PY) with costs per cost centre and the liabilities; reversible, then re-run |
+
+Simplifications for now: monthly salary only (no allowances, overtime, medical aid, retirement funding or
+age rebates), no part-month proration, and salary payment is posted as an ordinary journal entry
+(Dr 2500 salaries payable / Cr bank). Load each new SARS table before running March payroll.
+
+### Payroll in one call
+
+```http
+POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 5}
+```
+
+Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
+Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
+costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
 ## Role matrix
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
-| Accountant | journal entries, payments, customer and supplier invoices, business partners | finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
+| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
+| Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
 | Inventory Manager | goods movements, goods receipts, delivery reversal, materials | deliveries, purchase orders |
 | Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
-| HR Admin | hr | - |
+| HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
 | Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices |
 | Administrator / superuser | everything, including organisation structure | - |
 
-Every signed-in user can read organisation structure and master data.
+Every signed-in user can read organisation structure and master data, including cost and profit centres.
+Employee records and salaries are visible to HR only.
 
 ## API
 
@@ -217,6 +249,13 @@ Every signed-in user can read organisation structure and master data.
 | GET, POST | `/api/purchasing/invoices/` | POST `{"purchase_order", "supplier_reference", "invoice_date"[, "items": [{"item_number", "quantity", "net_price"}]]}`; filters `supplier`, `status` |
 | POST | `/api/purchasing/invoices/<id>/cancel/` | While unpaid |
 | GET | `/api/purchasing/reports/gr-ir/` | `?company_code=` |
+| CRUD | `/api/controlling/profit-centers/`, `cost-centers/`, `plant-profit-centers/` | `?company_code=`; cost centre's profit centre given by code |
+| GET | `/api/controlling/reports/cost-centers/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&cost_center=]` |
+| GET | `/api/controlling/reports/profit-centers/` | `?company_code=&fiscal_year=[&period_from=&period_to=]` |
+| CRUD | `/api/hr/org-units/`, `positions/` | Cost centre given by code |
+| CRUD | `/api/hr/employees/` | Personnel number assigned by the system; filters `company_code`, `org_unit`, `active` |
+| GET, POST | `/api/hr/payroll-runs/` | POST `{"company_code", "year", "month"[, "posting_date"]}`; filters `year`, `status` |
+| POST | `/api/hr/payroll-runs/<id>/reverse/` | Optional `{"posting_date"}` |
 | CRUD | `/api/org/company-codes/<code>/`, `plants/<code>/`, `storage-locations/`, `sales-organizations/<code>/`, `purchasing-organizations/<code>/` | |
 | CRUD | `/api/masterdata/currencies/<code>/`, `exchange-rates/`, `units/<code>/` | |
 | CRUD | `/api/masterdata/business-partners/<number>/` | `?search=` by name; number assigned by the system |
@@ -226,7 +265,7 @@ Every signed-in user can read organisation structure and master data.
 | GET, POST | `/api/finance/fiscal-years/` | POST creates the year and its 12 periods |
 | GET | `/api/finance/periods/` | `?company_code=&fiscal_year=` |
 | POST | `/api/finance/periods/<id>/open/`, `/close/` | Finance Manager |
-| GET, POST | `/api/finance/journal-entries/` | POST posts; filters `company_code`, `fiscal_year`, `period`, `document_type`, `status` |
+| GET, POST | `/api/finance/journal-entries/` | POST posts (lines take optional `cost_center`, `profit_center` codes); filters `company_code`, `fiscal_year`, `period`, `document_type`, `status` |
 | POST | `/api/finance/journal-entries/<id>/reverse/` | Optional `{"posting_date"}` |
 | GET | `/api/finance/reports/trial-balance/` | `?company_code=1000&fiscal_year=2027[&period_from=&period_to=]` |
 | POST | `/api/finance/incoming-payments/` | Optional `allocations: [{"line_id", "amount"}]`; otherwise oldest first |
@@ -290,7 +329,8 @@ apps/
   inventory/   Stock ledger: material documents, valuation, account determination
   sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
   purchasing/  Purchase orders, goods receipts, supplier invoices, GR/IR; services.py holds procure-to-pay
-  hr/          Reserved for Wave 3
+  controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
+  hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery
 tests/         pytest suite
 ```

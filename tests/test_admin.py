@@ -56,3 +56,31 @@ def test_sales_admin_pages_are_read_only(demo, admin_browser):
         assert admin_browser.get(f"/admin/sales/{path}/add/").status_code == 403, path
     assert admin_browser.get("/admin/finance/openitemclearing/").status_code == 200
     assert admin_browser.get("/admin/accounts/user/").status_code == 200
+
+
+def test_wave_2c_and_3_admin_pages(demo, admin_browser):
+    from datetime import date
+    from decimal import Decimal
+
+    from apps.hr import services as hr
+    from apps.purchasing import services as purchasing
+    from apps.purchasing.models import PurchaseOrder
+
+    order = purchasing.create_purchase_order(
+        purchasing_organization=demo.company.purchasing_organizations.get(), supplier=demo.supplier,
+        order_date=date(2026, 5, 4),
+        items=[purchasing.OrderItemInput(Material.objects.get(number="TG-1001"), Decimal("1"), Decimal("10"))],
+    )
+    run = hr.post_payroll_run(demo.company, year=2026, month=5)
+    pages = [
+        "purchasing/purchaseorder/", f"purchasing/purchaseorder/{order.pk}/change/", "purchasing/goodsreceipt/",
+        "purchasing/supplierinvoice/", "purchasing/purchasingaccountsetting/",
+        "controlling/costcenter/", "controlling/profitcenter/", "controlling/plantprofitcenter/",
+        "hr/orgunit/", "hr/position/", "hr/employee/", "hr/payetable/", "hr/payrollsetting/",
+        "hr/payrollrun/", f"hr/payrollrun/{run.pk}/change/",
+    ]
+    for path in pages:
+        assert admin_browser.get(f"/admin/{path}").status_code == 200, path
+    for path in ("purchasing/purchaseorder/add/", "hr/employee/add/", "hr/payrollrun/add/"):
+        assert admin_browser.get(f"/admin/{path}").status_code == 403, path
+    assert PurchaseOrder.objects.count() == 1

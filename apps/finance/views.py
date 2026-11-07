@@ -116,7 +116,7 @@ class JournalEntryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
             "company_code", "currency", "reversal_of", "reversed_by"
         ).prefetch_related(
             "lines__gl_account", "lines__currency", "lines__local_currency", "lines__business_partner",
-            "lines__material", "lines__plant", "lines__tax_code",
+            "lines__material", "lines__plant", "lines__tax_code", "lines__cost_center", "lines__profit_center",
         )
 
     def get_queryset(self):

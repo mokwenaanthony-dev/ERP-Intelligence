@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.accounts",
     "apps.organization",
+    "apps.controlling",
     "apps.masterdata",
     "apps.finance",
     "apps.inventory",

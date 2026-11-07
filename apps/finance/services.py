@@ -45,6 +45,8 @@ class LineInput:
     tax_code: TaxCode | None = None
     text: str = ""
     is_tax_line: bool = False
+    cost_center: object = None
+    profit_center: object = None
 
 
 # --- Fiscal calendar ------------------------------------------------------------------
@@ -145,6 +147,45 @@ def _check_line(company_code, line: LineInput) -> None:
     if line.tax_code is not None and line.tax_code.chart_of_accounts_id != company_code.chart_of_accounts_id:
         raise PostingError(f"Tax code {line.tax_code.code} does not belong to {company_code.code}.")
 
+    cost_center, profit_center = line.cost_center, line.profit_center
+    if cost_center is not None:
+        if cost_center.company_code_id != company_code.pk:
+            raise PostingError(f"Cost centre {cost_center.code} does not belong to {company_code.code}.")
+        if not cost_center.is_active:
+            raise PostingError(f"Cost centre {cost_center.code} is inactive.")
+        if account.account_type != GLAccount.AccountType.EXPENSE:
+            raise PostingError(f"Account {account.number} is not an expense account; it cannot take a cost centre.")
+        if profit_center is not None and profit_center.pk != cost_center.profit_center_id:
+            raise PostingError(
+                f"Cost centre {cost_center.code} belongs to profit centre {cost_center.profit_center.code}, "
+                f"not {profit_center.code}."
+            )
+    elif account.cost_center_required:
+        raise PostingError(f"Account {account.number} needs a cost centre.")
+    if profit_center is not None:
+        if profit_center.company_code_id != company_code.pk:
+            raise PostingError(f"Profit centre {profit_center.code} does not belong to {company_code.code}.")
+        if not profit_center.is_active:
+            raise PostingError(f"Profit centre {profit_center.code} is inactive.")
+
+
+def _derive_profit_centers(lines: list[LineInput]) -> list[LineInput]:
+    """Profit centre: as given, else the cost centre's, else the plant's default (SAP-style derivation)."""
+    from apps.controlling.models import PlantProfitCenter
+
+    plants = {line.plant.pk for line in lines if line.plant is not None}
+    by_plant = {link.plant_id: link.profit_center for link in
+                PlantProfitCenter.objects.select_related("profit_center").filter(plant_id__in=plants)} if plants else {}
+    result = []
+    for line in lines:
+        profit_center = line.profit_center
+        if profit_center is None and line.cost_center is not None:
+            profit_center = line.cost_center.profit_center
+        if profit_center is None and line.plant is not None:
+            profit_center = by_plant.get(line.plant.pk)
+        result.append(LineInput(**{**line.__dict__, "profit_center": profit_center}))
+    return result
+
 
 def calculate_tax(amount: Decimal, tax_code: TaxCode) -> Decimal:
     return (amount * tax_code.rate / Decimal("100")).quantize(CENT, rounding=ROUND_HALF_UP)
@@ -209,6 +250,7 @@ def _create_entry(*, company_code, document_type, posting_date, document_date, c
             amount_local=local_amount, local_currency=company_code.currency,
             business_partner=line.business_partner, material=line.material, plant=line.plant,
             tax_code=line.tax_code, is_tax_line=line.is_tax_line, text=line.text,
+            cost_center=line.cost_center, profit_center=line.profit_center,
         )
         for index, (line, local_amount) in enumerate(zip(lines, local_amounts), start=1)
     ])
@@ -227,7 +269,7 @@ def post_journal_entry(*, company_code, document_type=DocumentType.GENERAL, post
     for line in lines:
         _check_line(company_code, line)
     lines = [LineInput(**{**line.__dict__, "amount": line.amount.quantize(CENT)}) for line in lines]
-    lines = _with_tax_lines(lines)
+    lines = _derive_profit_centers(_with_tax_lines(lines))
     try:
         exchange_rate = ExchangeRate.get_rate(currency, company_code.currency, posting_date)
     except ExchangeRateNotFound as exc:
@@ -255,6 +297,7 @@ def reverse_journal_entry(entry: JournalEntry, *, posting_date: date | None = No
             debit_credit=flip[line.debit_credit],
             amount=abs(line.amount), business_partner=line.business_partner, material=line.material,
             plant=line.plant, tax_code=line.tax_code, text=line.text, is_tax_line=line.is_tax_line,
+            cost_center=line.cost_center, profit_center=line.profit_center,
         )
         for line in entry.lines.select_related("gl_account").order_by("line_number")
     ]

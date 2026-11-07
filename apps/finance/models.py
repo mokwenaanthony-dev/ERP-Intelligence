@@ -49,6 +49,9 @@ class GLAccount(AuditedModel):
         help_text="Reconciliation accounts can only be posted together with a business partner.",
     )
     is_posting_blocked = models.BooleanField(default=False)
+    cost_center_required = models.BooleanField(
+        default=False, help_text="Postings to this (expense) account must name a cost centre.",
+    )
 
     class Meta:
         ordering = ["chart_of_accounts__code", "number"]
@@ -144,6 +147,7 @@ class DocumentType(models.TextChoices):
     GOODS_RECEIPT = "WE", "Goods receipt"
     GOODS_ISSUE = "WA", "Goods issue"
     INVENTORY_ADJUSTMENT = "WI", "Inventory adjustment"
+    PAYROLL = "PY", "Payroll posting"
 
 
 class NumberRange(models.Model):
@@ -262,6 +266,13 @@ class JournalLine(ImmutableModel):
         "organization.Plant", on_delete=models.PROTECT, null=True, blank=True, related_name="journal_lines"
     )
     tax_code = models.ForeignKey(TaxCode, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    cost_center = models.ForeignKey(
+        "controlling.CostCenter", on_delete=models.PROTECT, null=True, blank=True, related_name="journal_lines"
+    )
+    profit_center = models.ForeignKey(
+        "controlling.ProfitCenter", on_delete=models.PROTECT, null=True, blank=True, related_name="journal_lines",
+        help_text="Given, or derived from the cost centre or the plant.",
+    )
     is_tax_line = models.BooleanField(default=False)
     text = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

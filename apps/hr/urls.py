@@ -1,2 +1,11 @@
-# Endpoints for this module arrive in its roadmap wave (see README).
-urlpatterns: list = []
+from rest_framework.routers import DefaultRouter
+
+from . import views
+
+router = DefaultRouter()
+router.register("org-units", views.OrgUnitViewSet, basename="org-unit")
+router.register("positions", views.PositionViewSet, basename="position")
+router.register("employees", views.EmployeeViewSet, basename="employee")
+router.register("payroll-runs", views.PayrollRunViewSet, basename="payroll-run")
+
+urlpatterns = router.urls

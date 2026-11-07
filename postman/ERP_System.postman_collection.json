@@ -60,6 +60,14 @@
     {
       "key": "supplier_invoice_id",
       "value": ""
+    },
+    {
+      "key": "employee_id",
+      "value": ""
+    },
+    {
+      "key": "payroll_run_id",
+      "value": ""
     }
   ],
   "item": [
@@ -1173,6 +1181,370 @@
             "body": {
               "mode": "raw",
               "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "HR and payroll (login as hr_admin), controlling reports (login as accountant)",
+      "item": [
+        {
+          "name": "Org units",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/org-units/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "org-units",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Positions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/positions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "positions",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Employees (active)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/employees/?company_code=1000&active=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "employees",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "active",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hire an employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/employees/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "employees",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"first_name\": \"Naledi\",\n  \"last_name\": \"Khumalo\",\n  \"position\": 2,\n  \"hire_date\": \"2026-06-01\",\n  \"monthly_salary\": \"41000.00\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('employee_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run and post payroll for May 2026",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/payroll-runs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "payroll-runs",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"year\": 2026,\n  \"month\": 5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('payroll_run_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payroll run detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/payroll-runs/{{payroll_run_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "payroll-runs",
+                "{{payroll_run_id}}",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reverse payroll run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/hr/payroll-runs/{{payroll_run_id}}/reverse/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "payroll-runs",
+                "{{payroll_run_id}}",
+                "reverse",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Cost centres",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/controlling/cost-centers/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "controlling",
+                "cost-centers",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cost centre report (accountant)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/controlling/reports/cost-centers/?company_code=1000&fiscal_year=2027",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "controlling",
+                "reports",
+                "cost-centers",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profit centre report (accountant)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/controlling/reports/profit-centers/?company_code=1000&fiscal_year=2027",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "controlling",
+                "reports",
+                "profit-centers",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "fiscal_year",
+                  "value": "2027"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Journal entry with a cost centre (accountant)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/finance/journal-entries/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "finance",
+                "journal-entries",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"posting_date\": \"2026-05-20\",\n  \"header_text\": \"May rent\",\n  \"lines\": [\n    {\n      \"gl_account\": \"6100\",\n      \"debit_credit\": \"D\",\n      \"amount\": \"12000.00\",\n      \"cost_center\": \"1000\"\n    },\n    {\n      \"gl_account\": \"1000\",\n      \"debit_credit\": \"C\",\n      \"amount\": \"12000.00\"\n    }\n  ]\n}"
             }
           }
         }
