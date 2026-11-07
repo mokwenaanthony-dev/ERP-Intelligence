@@ -17,7 +17,7 @@ the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
 cost and profit centres, and an analytics layer with financial statements and margin analysis. 375 tests, 99% coverage, CI with linting, security scanning and dependency
-auditing. **Next:** BI dashboards, then the knowledge graph.
+auditing. **Next:** the knowledge graph.
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design.
 
 ```mermaid
@@ -28,6 +28,11 @@ flowchart LR
     KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · GraphRAG"]
     AN --> BI["BI dashboards"]
 ```
+
+![Management overview dashboard in Metabase](docs/img/management-overview.png)
+
+*Management overview in Metabase: eight months of generated trading (`seed_demo_activity`) read from the
+PostgreSQL materialized views. The dashboards are built as code by `scripts/metabase_setup.py`.*
 
 ## Roadmap
 
@@ -40,7 +45,7 @@ flowchart LR
 | 2c | Procure-to-Pay: purchase order, goods receipt, supplier invoice with three-way match, payment, GR/IR | Done |
 | 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
 | 4a | Analytics layer: reporting views (materialized on PostgreSQL), income statement, balance sheet, margin analysis, stock ageing, payroll cost trend | Done |
-| 4a+ | BI dashboards (Metabase) on the reporting views | Next |
+| 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
 | 4b | Knowledge graph: event outbox, graph projection, Customer 360, document flow, supplier dependency, GraphRAG API | Next |
 | 5 | Production planning: bills of materials, routings, production orders | Planned |
 | 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
@@ -233,6 +238,15 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 4a+ delivers
+
+| Area | What exists |
+|---|---|
+| Demo activity | `seed_demo_activity`: months of realistic trading through the real business services: purchases with goods receipts, supplier invoices (some with price differences) and payments; 15-19 sales orders a month to three customers with deliveries, invoices and payments (one pays late); rent and utilities on cost centres; payroll, net salary payments, PAYE/UIF/SDL and VAT settlements with SARS. Repeatable with `--seed`; every ledger stays reconciled |
+| Reporting role | `setup_reporting_role`: PostgreSQL role `erp_reporting` with SELECT on the analytics views and lookup tables only, read-only sessions (least privilege) |
+| Dashboards as code | `scripts/metabase_setup.py` creates the Metabase admin, the database connection, collections, 10 questions and 2 dashboards through the Metabase REST API; safe to re-run |
+| Stack | Metabase v0.64 (LTS) in Docker Compose on `localhost:3000` |
+
 ## What Wave 4a delivers
 
 ```
@@ -364,6 +378,29 @@ docker compose exec web python manage.py refresh_analytics   # beat does this ev
 On SQLite the analytics views are ordinary views and always current; on PostgreSQL they are
 materialized and refreshed by Celery beat, `refresh_analytics` or `POST /api/analytics/refresh/`.
 
+### Dashboards (Metabase)
+
+Set `REPORTING_DB_PASSWORD`, `MB_ADMIN_EMAIL` and `MB_ADMIN_PASSWORD` in `.env` (see `.env.example`), then:
+
+```bash
+docker compose up -d --build
+docker compose exec web python manage.py seed_data
+docker compose exec web python manage.py seed_demo_activity     # months of trading, payroll and payments
+docker compose exec web python manage.py setup_reporting_role   # read-only database user for BI
+python scripts/metabase_setup.py                                # builds the dashboards through the Metabase API
+```
+
+Open http://localhost:3000 and sign in with the Metabase admin from `.env`. Two dashboards are created:
+
+- **Management overview**: revenue, gross margin % and stock value; revenue, expenses and result by
+  period; gross margin by customer and by material; stock value by age; slowest-moving stock.
+- **Payroll cost** (separate collection, so it can be limited to finance and HR in Metabase's
+  permissions): payroll by month and by cost centre.
+
+Metabase connects as `erp_reporting`, a PostgreSQL role that can only read the analytics views and
+lookup tables (no journal lines, no employee records), in read-only sessions. The dashboards are
+defined in `scripts/metabase_setup.py`, so they can be rebuilt on any machine.
+
 ## Test and check
 
 ```bash
@@ -381,7 +418,7 @@ The same gates run in `.github/workflows/ci.yml` on every push and pull request.
 ```
 apps/
   accounts/    User, roles, permission classes
-  common/      Audit base models, middleware, shared view/admin mixins, seed_data
+  common/      Audit base models, middleware, shared view/admin mixins, seed_data, seed_demo_activity
   organization/  Company codes, plants, storage locations, sales and purchasing organisations
   masterdata/  Currencies, exchange rates, units, Business Partner and roles, Material master
   finance/     Chart of accounts, fiscal calendar, tax codes, Universal Journal, open items and
@@ -389,10 +426,12 @@ apps/
   inventory/   Stock ledger: material documents, valuation, account determination
   sales/       Prices, sales orders, deliveries, invoices; services.py holds order-to-cash
   purchasing/  Purchase orders, goods receipts, supplier invoices, GR/IR; services.py holds procure-to-pay
-  analytics/   Reporting views (sql.py), read-only models, management reports, refresh task and command
+  analytics/   Reporting views (sql.py), read-only models, management reports, refresh and reporting-role commands
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
-erp_system/    Settings (settings_test.py for pytest), URLs, Celery
+erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
+scripts/       metabase_setup.py: dashboards as code
+docs/          ARCHITECTURE.md: target architecture and vision
 tests/         pytest suite
 ```
 
