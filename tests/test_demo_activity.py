@@ -98,7 +98,7 @@ def test_reporting_role(demo, monkeypatch):
     call_command("setup_reporting_role", "--password", "test-only-password", stdout=out)
     assert "Created role erp_reporting" in out.getvalue()
     call_command("setup_reporting_role", "--password", "changed", stdout=out)
-    assert "Altered role erp_reporting" in out.getvalue()
+    assert "Updated role erp_reporting" in out.getvalue()
     with connection.cursor() as cursor:
         def can_read(table):
             cursor.execute("SELECT has_table_privilege('erp_reporting', %s, 'SELECT')", [table])

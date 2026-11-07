@@ -46,7 +46,8 @@ class Command(BaseCommand):
             cursor.execute(f"GRANT USAGE ON SCHEMA public TO {ROLE}")
             cursor.execute(f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {ROLE}")
             cursor.execute(f"GRANT SELECT ON {', '.join(READABLE)} TO {ROLE}")
+        action = "Created" if verb == "CREATE" else "Updated"
         self.stdout.write(self.style.SUCCESS(
-            f"{verb.title()}d role {ROLE}: read-only access to {len(VIEWS)} analytics views and "
+            f"{action} role {ROLE}: read-only access to {len(VIEWS)} analytics views and "
             f"{len(LOOKUP_TABLES)} lookup tables."
         ))
