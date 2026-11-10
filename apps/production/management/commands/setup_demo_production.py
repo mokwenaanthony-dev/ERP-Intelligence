@@ -7,10 +7,12 @@ Run after ``setup_demo_company`` (``seed_data`` runs both). Creates, in plant 10
   allocated through G/L account 6950;
 * a two-level product: FG-4001 Assembled bracket = 1 x SF-3001 Pressed frame + 4 x RM-2002 Fastener
   pack, where SF-3001 = 2.5 kg of RM-2001 Steel sheet; with routings at PRESS3 and ASSY1;
-* opening stock of the raw materials and a sales price for FG-4001.
+* opening stock of the raw materials and a sales price for FG-4001;
+* production order accounts (Wave 5b): consumption 5400, factory output 5500, variances 5600.
 
 The standard cost of 100 x FG-4001 is then R22,525.00 (R225.25 each); the tests check this figure.
-Running it again changes nothing.
+Running it again changes nothing, except adding anything a later wave introduced (e.g. the order
+accounts on a database set up with Wave 5a).
 """
 from decimal import Decimal
 
@@ -20,7 +22,7 @@ from django.db import transaction
 from apps.controlling.models import CostCenter, ProfitCenter
 from apps.finance.models import FiscalYear, GLAccount
 from apps.inventory import services as inventory
-from apps.inventory.models import MovementType
+from apps.inventory.models import AccountKey, InventoryAccountSetting, MovementType
 from apps.masterdata.models import Material, UnitOfMeasure
 from apps.organization.models import CompanyCode, Plant, SalesOrganization
 from apps.production import services
@@ -45,6 +47,7 @@ class Command(BaseCommand):
         if company is None:
             raise CommandError("Demo company 1000 not found: run setup_demo_company first.")
         plant = Plant.objects.get(code="1000")
+        self._order_accounts(company)
         if ProductionArea.objects.filter(plant=plant, code="ASSY").exists():
             self.stdout.write("Demo production data already exists.")
             return
@@ -63,6 +66,21 @@ class Command(BaseCommand):
             f"Demo production ready: ASSY > L1 > PRESS3, ASSY1; FG-4001 standard cost "
             f"R{estimate['unit_cost']} each (R{estimate['total']} for 100)."
         ))
+
+    def _order_accounts(self, company):
+        """Where production orders post (Wave 5b), via inventory account determination."""
+        chart = company.chart_of_accounts
+        for number, name, key in (
+            ("5400", "Consumption - production orders", AccountKey.CONSUMPTION),
+            ("5500", "Factory output - production orders", AccountKey.FACTORY_OUTPUT),
+            ("5600", "Production variances", AccountKey.PROD_VARIANCE),
+        ):
+            account, _ = GLAccount.objects.get_or_create(
+                chart_of_accounts=chart, number=number,
+                defaults={"name": name, "account_type": GLAccount.AccountType.EXPENSE},
+            )
+            InventoryAccountSetting.objects.get_or_create(chart_of_accounts=chart, account_key=key, material_type="",
+                                                          defaults={"gl_account": account})
 
     def _costing(self, company, start):
         chart = company.chart_of_accounts

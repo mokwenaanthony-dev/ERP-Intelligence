@@ -18,3 +18,4 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0005](0005-troubleshooting-logs-and-request-ids.md) | Troubleshooting logs with request IDs and error locations | Accepted | 4c |
 | [0006](0006-isa-95-equipment-hierarchy-as-shared-vocabulary.md) | ISA-95 equipment hierarchy, owned by the ERP, shared by the graph and the UNS | Accepted | 5 |
 | [0007](0007-unified-namespace-conventions.md) | Unified Namespace conventions and ISA-95 message names | Accepted (built in Wave 6) | 5, 6 |
+| [0008](0008-exact-decimals-in-api-responses.md) | Money and quantities in API responses are exact decimal strings | Accepted | 5b |

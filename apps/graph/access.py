@@ -12,17 +12,20 @@ BASE = {"CompanyCode", "Plant", "Material", "ProfitCenter", "CostCenter", "Area"
 SALES = {"BusinessPartner", "SalesOrder", "Delivery", "Invoice", "Payment"}
 PURCHASING = {"BusinessPartner", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice"}
 PEOPLE = {"OrgUnit", "Position", "Employee"}
-FINANCE = SALES | PURCHASING
+FINANCE = SALES | PURCHASING | {"ProductionOrder"}
 
 ROLE_LABELS = {
     Role.FINANCE_MANAGER: BASE | FINANCE,
     Role.ACCOUNTANT: BASE | FINANCE,
     Role.SALES_REP: BASE | SALES,
     Role.PURCHASING_OFFICER: BASE | PURCHASING,
-    Role.INVENTORY_MANAGER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
+    Role.INVENTORY_MANAGER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt",
+                                    "ProductionOrder"},
     Role.HR_ADMIN: BASE | PEOPLE,
-    Role.PRODUCTION_PLANNER: BASE | {"BusinessPartner", "SalesOrder", "PurchaseOrder", "GoodsReceipt"},
-    Role.VIEWER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
+    Role.PRODUCTION_PLANNER: BASE | {"BusinessPartner", "SalesOrder", "PurchaseOrder", "GoodsReceipt",
+                                     "ProductionOrder"},
+    Role.VIEWER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt",
+                         "ProductionOrder"},
 }
 
 

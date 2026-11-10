@@ -23,7 +23,7 @@ flowchart TB
         LO["Logistics<br/>stock, sales, purchasing"]
         HR["HR and payroll"]
         CO["Controlling<br/>cost and profit centres"]
-        PP["Production planning 🔜<br/>incl. ISA-95 equipment hierarchy"]
+        PP["Production planning ✅<br/>ISA-95 hierarchy, BOMs, routings, orders"]
         OUT[("Outbox of business events ✅")]
         FI & LO & HR & CO & PP --> OUT
     end
@@ -201,7 +201,7 @@ ERP using the ISA-95 model, which is the standard for connecting a factory's ope
 |---|---|---|---|
 | ERP → MES | Operations schedule / operations request | Production orders with quantities and dates | Production planning (Wave 5) |
 | ERP → MES | Operations definition, material definition, equipment | Routings, bills of materials, material master, the equipment hierarchy | Production planning (Wave 5) |
-| MES → ERP | Operations performance / operations response | Operation confirmations, material consumed, finished goods produced, scrap, machine and labour hours | Goods movements (261 issue to order, 101 receipt from order, 551 scrap), activity costs to cost centres |
+| MES → ERP | Operations performance / operations response | Operation confirmations, material consumed, finished goods produced, scrap, machine and labour hours | ✅ ERP side built in Wave 5b: confirmations (with an `external_id` so a repeated MES message is charged once), 261 issue to order, 101 receipt from order; activity costs credited to the work centre's cost centre |
 
 Using ISA-95's own object names for the messages means anyone who knows the standard recognises the
 interface, and the payloads can follow B2MML, the standard's XML/JSON schemas, where that helps.
@@ -226,8 +226,8 @@ Design rules:
 | 4a ✅ | Analytics: materialized-view reporting, income statement, balance sheet, margins, stock ageing, payroll cost; Metabase dashboards (4a+) | Needs the transaction history from Waves 1-3 |
 | 4b ✅ | Knowledge graph: outbox, projector, ontology v1, Customer 360, document flow, supplier dependency, knowledge-graph retrieval (KG-RAG) endpoint | Built on the same events the analytics layer uses |
 | 4c ✅ | Troubleshooting logs (request IDs, error locations, business events) and code documentation | Needed before the shop floor adds a second source of events |
-| 5a 🔜 | Production master data: ISA-95 equipment hierarchy (areas, lines, cells) in the ERP and the graph, ontology document, activity rates, bills of materials, routings, cost estimate, where-used | The hierarchy is the vocabulary the UNS and the graph share |
-| 5b 🗺️ | Production orders: goods issue to order (261), confirmations with activity costs, receipt from order (101), variances | Orders are what the MES runs |
+| 5a ✅ | Production master data: ISA-95 equipment hierarchy (areas, lines, cells) in the ERP and the graph, ontology document, activity rates, bills of materials, routings, cost estimate, where-used | The hierarchy is the vocabulary the UNS and the graph share |
+| 5b ✅ | Production orders: goods issue to order (261), confirmations with activity costs, receipt from order (101), settlement of variances; exact decimals in the API | Orders are what the MES runs; confirmations are what it reports |
 | 6 🗺️ | MES integration: Unified Namespace (MQTT broker), ERP outbox published to the UNS, MES events mapped to ERP postings, live state on the graph's equipment nodes | Needs the hierarchy and production orders |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |

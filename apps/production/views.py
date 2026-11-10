@@ -7,6 +7,9 @@ the file and line where it was raised.
 
 BOMs and routings are created whole and never edited: a change is a new version with a later
 ``valid_from``. The ``status`` action activates or deactivates a version.
+
+Production orders (Wave 5b) are created whole and then moved through their life by actions
+(release, issue, confirmations, receive, complete, cancel), each calling ``orders.py``.
 """
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -16,20 +19,43 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import ActivityRatePermission, CostEstimatePermission, ProductionPermission
+from apps.accounts.permissions import (
+    ActivityRatePermission,
+    CostEstimatePermission,
+    OrderGoodsMovementPermission,
+    OrderSettlementPermission,
+    ProductionOrderPermission,
+    ProductionPermission,
+)
 from apps.common.views import AuditedViewMixin, ProtectedDestroyMixin
 from apps.masterdata.models import Material
 from apps.organization.models import Plant
 
-from . import services
-from .models import ActivityRate, ActivityType, BillOfMaterials, ProductionArea, ProductionLine, Routing, WorkCenter
+from . import orders, services
+from .models import (
+    ActivityRate,
+    ActivityType,
+    BillOfMaterials,
+    ProductionArea,
+    ProductionLine,
+    ProductionOrder,
+    Routing,
+    WorkCenter,
+)
 from .serializers import (
     ActivityRateSerializer,
     ActivityTypeSerializer,
     BOMCreateSerializer,
     BOMSerializer,
+    ConfirmationSerializer,
+    ConfirmSerializer,
+    IssueSerializer,
+    PostingDateSerializer,
     ProductionAreaSerializer,
     ProductionLineSerializer,
+    ProductionOrderCreateSerializer,
+    ProductionOrderSerializer,
+    ReceiveSerializer,
     RoutingCreateSerializer,
     RoutingSerializer,
     StatusSerializer,
@@ -201,3 +227,110 @@ class EquipmentView(APIView):
         if plant is None:
             raise serializers.ValidationError({"plant": "A valid plant code is required."})
         return Response(services.equipment_hierarchy(plant))
+
+
+# --- Wave 5b: production orders ----------------------------------------------------------------
+
+class ProductionOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Create, list and view orders; release, issue, confirm, receive, complete and cancel via actions.
+
+    ``GET .../costs/`` is the planned-against-actual cost report of one order.
+    """
+
+    serializer_class = ProductionOrderSerializer
+    permission_classes = [ProductionOrderPermission]
+    # Warehouse staff may move goods for an order; finance may complete (settle) it.
+    action_permissions = {"issue": [OrderGoodsMovementPermission], "receive": [OrderGoodsMovementPermission],
+                          "complete": [OrderSettlementPermission]}
+
+    def get_permissions(self):
+        classes = self.action_permissions.get(self.action, self.permission_classes)
+        return [permission() for permission in classes]
+
+    def get_queryset(self):
+        queryset = ProductionOrder.objects.select_related(
+            "company_code", "plant", "material", "unit", "receipt_storage_location", "bom__material", "bom__plant",
+            "routing__material", "routing__plant", "settlement_entry", "created_by", "updated_by",
+        ).prefetch_related("components__material", "components__storage_location",
+                           "operations__work_center__line__area__plant__company_code",
+                           "operations__activities__activity_type", "operations__confirmations")
+        params = self.request.query_params
+        queryset = _plant_filter(queryset, self.request)
+        if params.get("status"):
+            queryset = queryset.filter(status=params["status"])
+        if params.get("material"):
+            queryset = queryset.filter(material__number=params["material"])
+        return queryset
+
+    def _respond(self, order, code=status.HTTP_200_OK):
+        return Response(self.get_serializer(self.get_queryset().get(pk=order.pk)).data, status=code)
+
+    def create(self, request, *args, **kwargs):
+        serializer = ProductionOrderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._respond(serializer.post(request.user), status.HTTP_201_CREATED)
+
+    def _dated(self, request, func):
+        serializer = PostingDateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            order = func(self.get_object(), serializer.validated_data["posting_date"], user=request.user)
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+        return self._respond(order)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        """POST {"posting_date": "2026-06-01"}"""
+        return self._dated(request, orders.release_order)
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        """POST {"posting_date": ...}: close the order and settle its variance."""
+        return self._dated(request, orders.complete_order)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        try:
+            order = orders.cancel_order(self.get_object(), user=request.user)
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+        return self._respond(order)
+
+    def _post(self, request, serializer_class):
+        serializer = serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return serializer.post(self.get_object(), request.user)
+
+    @action(detail=True, methods=["post"])
+    def issue(self, request, pk=None):
+        """POST {"posting_date": ..., "items": [{"material", "quantity"}] (optional: default = what is still
+        required)} - goods issue 261."""
+        document = self._post(request, IssueSerializer)
+        return Response({"material_document": document.document_number,
+                         "journal_entry": getattr(document.journal_entry, "document_number", None)},
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def receive(self, request, pk=None):
+        """POST {"posting_date": ..., "quantity": ...} - goods receipt 101 from the order."""
+        document = self._post(request, ReceiveSerializer)
+        return Response({"material_document": document.document_number,
+                         "journal_entry": getattr(document.journal_entry, "document_number", None)},
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get", "post"])
+    def confirmations(self, request, pk=None):
+        """GET: the order's confirmations. POST {"posting_date", "operation_number", "yield_quantity",
+        "activities": {"LAB": "26"}, "final": true, "external_id": "mes-event-1"}: confirm work."""
+        if request.method == "GET":
+            records = self.get_object().confirmations.select_related(
+                "order", "operation__work_center", "journal_entry").prefetch_related("activities__activity_type")
+            return Response(ConfirmationSerializer(records, many=True).data)
+        confirmation = self._post(request, ConfirmSerializer)
+        return Response(ConfirmationSerializer(confirmation).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def costs(self, request, pk=None):
+        """Planned against actual cost by component, activity and output, and the variance."""
+        return Response(orders.order_costs(self.get_object()))

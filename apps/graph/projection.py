@@ -15,6 +15,8 @@ graph without mapping tables.
     (:Employee)-[:HOLDS]->(:Position)-[:IN]->(:OrgUnit)-[:CHARGED_TO]->(:CostCenter)-[:BELONGS_TO]->(:ProfitCenter)
     (:Cell)-[:PART_OF]->(:Line)-[:PART_OF]->(:Area)-[:PART_OF]->(:Plant), (:Cell)-[:CHARGED_TO]->(:CostCenter)
     (:BOM)-[:FOR]->(:Material), (:BOM)-[:CONSUMES]->(:Material), (:Routing)-[:HAS_OPERATION]->(:Cell)
+    (:ProductionOrder)-[:PRODUCES]->(:Material), (:ProductionOrder)-[:CONSUMES]->(:Material),
+    (:ProductionOrder)-[:HAS_OPERATION]->(:Cell)
 
 Equipment nodes use ISA-95 names (ADR 0006) and carry their ISA-95 level and Unified Namespace topic
 path (``uns_path``). The full ontology, with every property, is documented in ``docs/ONTOLOGY.md``.
@@ -24,10 +26,10 @@ Pay data never enters the graph: employees carry name, dates and position only.
 from django.apps import apps
 
 DOCUMENT_LABELS = ["SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice",
-                   "Payment"]
+                   "Payment", "ProductionOrder"]
 MASTER_LABELS = ["CompanyCode", "BusinessPartner", "Material", "Plant", "ProfitCenter", "CostCenter", "OrgUnit",
                  "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing"]
-ONTOLOGY_VERSION = "1.1"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
+ONTOLOGY_VERSION = "1.2"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
 ALL_LABELS = MASTER_LABELS + DOCUMENT_LABELS
 
 
@@ -188,6 +190,24 @@ def routing(g, r):
                {"description": op.description}, merge_on={"operation_number": op.operation_number})
 
 
+def production_order(g, order):
+    key = _doc_key(order, "order_number")
+    g.node("ProductionOrder", key, {
+        "number": order.order_number, "status": order.status, "quantity": order.quantity,
+        "start_date": order.start_date, "finish_date": order.finish_date, "planned_cost": order.planned_cost,
+    })
+    g.edge("ProductionOrder", key, "PRODUCES", "Material", order.material.number)
+    g.edge("ProductionOrder", key, "MADE_AT", "Plant", order.plant.code)
+    for rel in ("CONSUMES", "HAS_OPERATION"):
+        g.clear_edges("ProductionOrder", key, rel)
+    for component in order.components.select_related("material"):
+        g.edge("ProductionOrder", key, "CONSUMES", "Material", component.material.number,
+               {"quantity": component.required_quantity}, merge_on={"item_number": component.item_number})
+    for op in order.operations.select_related("work_center__plant"):
+        g.edge("ProductionOrder", key, "HAS_OPERATION", "Cell", _plant_child_key(op.work_center),
+               {"description": op.description}, merge_on={"operation_number": op.operation_number})
+
+
 # --- order to cash ---------------------------------------------------------------------------
 
 def sales_order(g, order):
@@ -318,6 +338,7 @@ PROJECTORS = {
     "production.workcenter": (work_center, lambda o: ("Cell", _plant_child_key(o))),
     "production.billofmaterials": (bill_of_materials, lambda o: ("BOM", o.key)),
     "production.routing": (routing, lambda o: ("Routing", o.key)),
+    "production.productionorder": (production_order, lambda o: ("ProductionOrder", _doc_key(o, "order_number"))),
 }
 
 

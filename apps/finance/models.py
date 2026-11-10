@@ -162,6 +162,8 @@ class DocumentType(models.TextChoices):
     GOODS_ISSUE = "WA", "Goods issue"
     INVENTORY_ADJUSTMENT = "WI", "Inventory adjustment"
     PAYROLL = "PY", "Payroll posting"
+    PRODUCTION_CONFIRMATION = "PC", "Production confirmation (activity allocation)"
+    PRODUCTION_SETTLEMENT = "PS", "Production order settlement"
 
 
 class NumberRange(models.Model):
@@ -288,6 +290,10 @@ class JournalLine(ImmutableModel):
     profit_center = models.ForeignKey(
         "controlling.ProfitCenter", on_delete=models.PROTECT, null=True, blank=True, related_name="journal_lines",
         help_text="Given, or derived from the cost centre or the plant.",
+    )
+    order_number = models.CharField(
+        max_length=20, blank=True, default="", db_index=True,
+        help_text="Production order this line is charged to (SAP AUFNR), a cost object like a cost centre.",
     )
     is_tax_line = models.BooleanField(default=False)
     text = models.CharField(max_length=100, blank=True)

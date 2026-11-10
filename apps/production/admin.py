@@ -1,7 +1,8 @@
 """Django admin screens for production planning.
 
-The equipment hierarchy and costing data can be maintained here. BOMs and routings are read-only:
-they are created through the API so the cycle and work-centre checks in ``services.py`` always run.
+The equipment hierarchy and costing data can be maintained here. BOMs, routings, production orders
+and confirmations are read-only: they are created through the API so the rules in ``services.py`` and
+``orders.py`` always run.
 """
 from django.contrib import admin
 
@@ -12,8 +13,12 @@ from .models import (
     ActivityType,
     BillOfMaterials,
     BOMItem,
+    Confirmation,
+    OrderComponent,
+    OrderOperation,
     ProductionArea,
     ProductionLine,
+    ProductionOrder,
     Routing,
     RoutingOperation,
     WorkCenter,
@@ -90,3 +95,41 @@ class BillOfMaterialsAdmin(_RecipeAdmin):
 @admin.register(Routing)
 class RoutingAdmin(_RecipeAdmin):
     inlines = [RoutingOperationInline]
+
+
+class OrderComponentInline(_ReadOnlyInline):
+    model = OrderComponent
+    fields = ("item_number", "material", "required_quantity", "planned_value", "storage_location")
+
+
+class OrderOperationInline(_ReadOnlyInline):
+    model = OrderOperation
+    fields = ("operation_number", "description", "work_center")
+
+
+@admin.register(ProductionOrder)
+class ProductionOrderAdmin(admin.ModelAdmin):
+    """Read-only: orders move through their life in the API, where every posting rule runs."""
+
+    list_display = ("order_number", "material", "quantity", "plant", "start_date", "status", "planned_cost")
+    list_filter = ("plant", "status")
+    search_fields = ("order_number", "material__number")
+    inlines = [OrderComponentInline, OrderOperationInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Confirmation)
+class ConfirmationAdmin(admin.ModelAdmin):
+    list_display = ("order", "confirmation_number", "operation", "posting_date", "yield_quantity", "is_final")
+    search_fields = ("order__order_number", "external_id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

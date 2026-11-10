@@ -27,10 +27,12 @@ class MovementType(models.TextChoices):
     INVENTORY_GAIN = "701", "Physical inventory gain"
     INVENTORY_LOSS = "702", "Physical inventory loss"
     TRANSFER = "311", "Transfer between storage locations"
+    GOODS_ISSUE_ORDER = "261", "Goods issue to production order"
 
 
 RECEIPTS = {MovementType.GOODS_RECEIPT, MovementType.INITIAL_ENTRY, MovementType.INVENTORY_GAIN}
-ISSUES = {MovementType.GOODS_ISSUE_DELIVERY, MovementType.SCRAPPING, MovementType.INVENTORY_LOSS}
+ISSUES = {MovementType.GOODS_ISSUE_DELIVERY, MovementType.SCRAPPING, MovementType.INVENTORY_LOSS,
+          MovementType.GOODS_ISSUE_ORDER}
 PRICED_RECEIPTS = {MovementType.GOODS_RECEIPT, MovementType.INITIAL_ENTRY}  # value comes from the given price
 
 
@@ -43,6 +45,10 @@ class AccountKey(models.TextChoices):
     COST_OF_SALES = "COST_OF_SALES", "Cost of goods sold (GBB-VAX)"
     SCRAP = "SCRAP", "Scrapping expense (GBB-VNG)"
     DIFFERENCES = "DIFFERENCES", "Physical inventory differences (GBB-INV)"
+    # Values kept within the 15-character column.
+    CONSUMPTION = "CONSUMPTION", "Consumption for production orders (GBB-VBR)"
+    FACTORY_OUTPUT = "FACTORY_OUTPUT", "Factory output credited to production orders"
+    PROD_VARIANCE = "PROD_VARIANCE", "Production order variances (settlement)"
 
 
 # Which account each value-changing movement uses opposite the inventory account.
@@ -53,7 +59,11 @@ OFFSET_ACCOUNT = {
     MovementType.SCRAPPING: AccountKey.SCRAP,
     MovementType.INVENTORY_GAIN: AccountKey.DIFFERENCES,
     MovementType.INVENTORY_LOSS: AccountKey.DIFFERENCES,
+    MovementType.GOODS_ISSUE_ORDER: AccountKey.CONSUMPTION,
 }
+# A 101 that receives a product from a production order (instead of from a purchase order) is
+# offset against the order, not against GR/IR.
+ORDER_RECEIPT_OFFSET = AccountKey.FACTORY_OUTPUT
 
 
 class InventoryAccountSetting(AuditedModel):
@@ -99,6 +109,8 @@ class MaterialDocument(ImmutableModel, AuditedModel):
     posting_date = models.DateField()
     document_date = models.DateField()
     reference = models.CharField(max_length=30, blank=True)
+    order_number = models.CharField(max_length=20, blank=True, default="", db_index=True,
+                                    help_text="Production order issued to (261) or received from (101).")
     header_text = models.CharField(max_length=100, blank=True)
     business_partner = models.ForeignKey(
         "masterdata.BusinessPartner", on_delete=models.PROTECT, null=True, blank=True, related_name="+",

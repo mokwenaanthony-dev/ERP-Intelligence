@@ -139,6 +139,11 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
     # Logs every API error (with the file and line of a broken business rule) before responding.
     "EXCEPTION_HANDLER": "apps.common.exceptions.api_exception_handler",
+    # Money and quantities as exact decimal strings in every response, reports included (ADR 0008).
+    "DEFAULT_RENDERER_CLASSES": (
+        "apps.common.renderers.ExactDecimalJSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ),
 }
 
 SIMPLE_JWT = {

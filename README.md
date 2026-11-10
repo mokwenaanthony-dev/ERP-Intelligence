@@ -54,8 +54,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
 | 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware knowledge-graph retrieval (KG-RAG) | Done |
 | 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | Done |
-| 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | In review |
-| 5b | Production orders: release, goods issue to the order (261), operation confirmations posting activity costs, goods receipt from the order (101), variances | Next |
+| 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | Done |
+| 5b | Production orders: release, goods issue to the order (261), confirmations charging machine and labour hours, goods receipt from the order (101), settlement of variances, planned-against-actual costs; exact decimals in every API response | In review |
 | 6 | MES integration: Unified Namespace (MQTT, ISA-95 topic paths from the Wave 5 hierarchy), ERP events published to it, shop-floor events mapped to ERP postings | Planned |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
@@ -111,7 +111,7 @@ is added by the system.
 
 | Area | What exists |
 |---|---|
-| Movement types | 561 initial stock, 101 goods receipt, 601 goods issue for delivery, 551 scrapping, 701/702 physical inventory gain/loss, 311 transfer between storage locations |
+| Movement types | 561 initial stock, 101 goods receipt (from a purchase order, or from a production order since 5b), 601 goods issue for delivery, 261 goods issue to a production order (5b), 551 scrapping, 701/702 physical inventory gain/loss, 311 transfer between storage locations |
 | Material documents | Immutable, numbered (`MD00000001`), reversible; items carry signed quantities and values per storage location |
 | Valuation | Moving average price per material and plant, always computed from the movements (no stored totals); issuing all stock takes the full remaining value, so no cents are left behind |
 | Accounting | Every value-changing movement posts a journal entry in the same transaction (`WE` receipts, `WA` issues, `WI` count differences), with material and plant on each line |
@@ -246,6 +246,31 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 5b delivers
+
+```
+Create (copies BOM, routing, planned cost) -> Release -> Issue components (261) -> Confirm operations
+    -> Receive the product (101, at planned unit cost) -> Complete: settle what is left to variances
+
+Journal, order MO00000002 (100 brackets, planned R22,525.00):
+  issue      Dr 5400 consumption (order)  16,425.00 + 615.00   Cr 1200 inventory
+  confirm    Dr 6950 allocation (order)    5,720.00           Cr 6950 allocation (cost centre 4000)
+  receive    Dr 1200 inventory            22,525.00           Cr 5500 factory output (order)
+  settle     Dr 5600 production variances    235.00           Cr 5500 factory output (order)   -> order balance 0
+```
+
+| Area | What exists |
+|---|---|
+| The order as a cost object | Journal lines carry the production order number (SAP's `AUFNR`), so an order's actual cost is a sum over the Universal Journal like a cost centre's. A line goes to a cost centre or an order, not both; a cost-centre-required account accepts an order instead |
+| Production orders | Created from the BOM and routing valid on the start date, with the planned cost from the standard cost estimate stored per component and activity. CREATED -> RELEASED -> COMPLETED, or CANCELLED before any posting |
+| Goods movements | Movement 261 issues components to the order (the remaining requirement by default; more than planned is allowed and shows as a variance; only order components). A 101 from the order receives the product at the planned unit cost; no over-delivery. Both reversible through the stock ledger |
+| Confirmations | Work reported per operation (SAP CO11N, ISA-95 operations response): activity quantities given, or derived from the plan (in proportion to the quantity reported; a final confirmation books what is left). Charged at the cost-centre rate on the posting date: debit the order, credit the work centre's cost centre. An `external_id` (e.g. the MES event ID) makes a repeated message harmless |
+| Settlement | Completing the order moves its remaining balance (actual cost minus the value of goods received) to production variances, leaving the order at zero |
+| Order cost report | `GET /api/production/orders/<id>/costs/`: planned against actual by component, activity and output, target cost, balance and settled variance |
+| Exact decimals ([ADR 0008](docs/decisions/0008-exact-decimals-in-api-responses.md)) | Every amount in every API response is an exact decimal string (`"22525.00"`), reports included; before, report endpoints returned floats |
+| Knowledge graph (ontology 1.2) | `ProductionOrder` nodes that produce a material, consume components and run at cells; where-used also lists open production orders that need the material |
+| Roles | Planner creates, releases, confirms, completes; warehouse issues and receives; Finance Manager may complete (settle); finance and viewers read |
+
 ## What Wave 5a delivers
 
 ```
@@ -329,13 +354,13 @@ Management reports (API): income statement · balance sheet · sales margin · s
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
+| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, completing (settling) production orders, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
-| Inventory Manager | goods movements, goods receipts, delivery reversal, materials | deliveries, purchase orders |
+| Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders | deliveries, purchase orders, production orders |
 | Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
-| Production Planner | production areas, lines, work centres, BOMs, routings | cost estimates, all master data |
+| Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete) | cost estimates, all master data |
 | Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices |
 | Administrator / superuser | everything, including organisation structure | - |
 
@@ -381,6 +406,13 @@ Employee records and salaries are visible to HR only.
 | GET | `/api/production/boms/explode/` | `?material=&plant=&quantity=[&date=]`: multi-level explosion |
 | GET | `/api/production/cost-estimate/` | `?material=&plant=&quantity=[&date=]` |
 | GET | `/api/production/equipment/` | `?plant=`: ISA-95 tree with UNS topic paths |
+| GET, POST | `/api/production/orders/` | `?plant=&status=&material=`; POST `{"material", "plant", "quantity", "start_date"[, "finish_date", "receipt_storage_location"]}` |
+| POST | `/api/production/orders/<id>/release/`, `/complete/` | `{"posting_date"}`; complete settles the variance |
+| POST | `/api/production/orders/<id>/cancel/` | Only before anything is posted |
+| POST | `/api/production/orders/<id>/issue/` | `{"posting_date"[, "items": [{"material", "quantity"}]]}`: movement 261 |
+| GET, POST | `/api/production/orders/<id>/confirmations/` | `{"posting_date", "operation_number", "yield_quantity"[, "activities": {"LAB": "26"}, "final", "external_id"]}` |
+| POST | `/api/production/orders/<id>/receive/` | `{"posting_date", "quantity"}`: movement 101 from the order |
+| GET | `/api/production/orders/<id>/costs/` | Planned against actual, variance |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
@@ -530,7 +562,8 @@ apps/
   graph/       Knowledge graph: outbox, projection (ontology), Neo4j store, Cypher queries, role filtering
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
-  production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate; setup_demo_production
+  production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate (services.py);
+               production orders, confirmations, settlement (orders.py); setup_demo_production
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code
 docs/          ARCHITECTURE.md: architecture and vision; ONTOLOGY.md: the graph's node types; decisions/: ADRs

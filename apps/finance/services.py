@@ -52,6 +52,7 @@ class LineInput:
     is_tax_line: bool = False
     cost_center: object = None
     profit_center: object = None
+    order_number: str = ""  # production order as the cost object (Wave 5b)
 
 
 # --- Fiscal calendar ------------------------------------------------------------------
@@ -169,8 +170,14 @@ def _check_line(company_code, line: LineInput) -> None:
                 f"Cost centre {cost_center.code} belongs to profit centre {cost_center.profit_center.code}, "
                 f"not {profit_center.code}."
             )
-    elif account.cost_center_required:
-        raise PostingError(f"Account {account.number} needs a cost centre.")
+    elif account.cost_center_required and not line.order_number:
+        # A production order is a cost object too: the cost lands on the order instead of a cost centre.
+        raise PostingError(f"Account {account.number} needs a cost centre or a production order.")
+    if line.order_number:
+        if cost_center is not None:
+            raise PostingError("A line goes to a cost centre or a production order, not both.")
+        if account.account_type != GLAccount.AccountType.EXPENSE:
+            raise PostingError(f"Account {account.number} is not an expense account; it cannot take an order.")
     if profit_center is not None:
         if profit_center.company_code_id != company_code.pk:
             raise PostingError(f"Profit centre {profit_center.code} does not belong to {company_code.code}.")
@@ -260,7 +267,7 @@ def _create_entry(*, company_code, document_type, posting_date, document_date, c
             amount_local=local_amount, local_currency=company_code.currency,
             business_partner=line.business_partner, material=line.material, plant=line.plant,
             tax_code=line.tax_code, is_tax_line=line.is_tax_line, text=line.text,
-            cost_center=line.cost_center, profit_center=line.profit_center,
+            cost_center=line.cost_center, profit_center=line.profit_center, order_number=line.order_number,
         )
         for index, (line, local_amount) in enumerate(zip(lines, local_amounts), start=1)
     ])
@@ -311,7 +318,7 @@ def reverse_journal_entry(entry: JournalEntry, *, posting_date: date | None = No
             debit_credit=flip[line.debit_credit],
             amount=abs(line.amount), business_partner=line.business_partner, material=line.material,
             plant=line.plant, tax_code=line.tax_code, text=line.text, is_tax_line=line.is_tax_line,
-            cost_center=line.cost_center, profit_center=line.profit_center,
+            cost_center=line.cost_center, profit_center=line.profit_center, order_number=line.order_number,
         )
         for line in entry.lines.select_related("gl_account").order_by("line_number")
     ]
