@@ -144,7 +144,7 @@ def supplier_dependency(company_code: str, allowed: set) -> list:
     } for row in rows]
 
 
-# --- GraphRAG retrieval --------------------------------------------------------------------------
+# --- KG-RAG retrieval -----------------------------------------------------------------------------
 
 HIDDEN_PROPERTIES = {"key", "labels"}
 
@@ -154,7 +154,7 @@ def _describe(node, allowed):
 
 
 def context(label: str, key: str, allowed: set, depth: int = 2, limit: int = 60) -> dict | None:
-    """The neighbourhood of one node as grounded facts for an AI agent (the retrieval half of GraphRAG).
+    """The neighbourhood of one node as grounded facts for an AI agent (knowledge-graph retrieval, KG-RAG).
 
     Every node on every path must be a label the caller may see, so an agent acting for a sales rep
     can never reach an employee record, however the graph is connected.

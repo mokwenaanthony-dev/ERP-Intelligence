@@ -1,4 +1,4 @@
-"""Knowledge graph API: Customer 360, document flow, supplier dependency, GraphRAG context, status
+"""Knowledge graph API: Customer 360, document flow, supplier dependency, KG-RAG context, status
 and rebuild.
 
 Every query is filtered by the caller's role (``access.py``), so the graph never shows a user more
@@ -91,7 +91,7 @@ class SupplierDependencyView(_GraphView):
 class ContextView(_GraphView):
     """GET /api/graph/context/?label=SalesOrder&key=1000/SO00000001[&depth=2]
 
-    The retrieval half of GraphRAG: grounded facts about one entity for an AI agent, limited to
+    Knowledge-graph retrieval (KG-RAG): grounded facts about one entity for an AI agent, limited to
     what the caller's role may see.
     """
 
