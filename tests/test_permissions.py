@@ -4,9 +4,10 @@ A request that passes the permission check returns anything except 403 (often 40
 because the test sends an empty body); a request that fails it returns 403.
 """
 import pytest
-from rest_framework.test import APIClient
 
 from apps.accounts.models import Role
+
+from .conftest import IdempotentAPIClient
 
 pytestmark = pytest.mark.django_db
 
@@ -90,7 +91,7 @@ def test_role_matrix(client_for, role, url, method, allowed):
 
 
 def test_superuser_passes_every_check(make_user):
-    client = APIClient()
+    client = IdempotentAPIClient()
     client.force_authenticate(user=make_user(Role.VIEWER, username="root", is_superuser=True))
     assert client.post(JOURNAL, {}, format="json").status_code == 400  # past the permission check
 

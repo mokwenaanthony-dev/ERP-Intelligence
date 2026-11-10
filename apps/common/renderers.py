@@ -16,6 +16,7 @@ class ExactDecimalEncoder(JSONEncoder):
     """DRF's encoder, except that decimals keep every digit and their scale."""
 
     def default(self, obj):
+        """Decimals as exact strings; everything else as DRF's encoder does it."""
         if isinstance(obj, Decimal):
             # "f" formatting never switches to exponent notation (str(Decimal("1E+2")) would be "1E+2").
             return format(obj, "f")

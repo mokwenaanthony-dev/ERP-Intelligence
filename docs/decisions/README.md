@@ -19,3 +19,5 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0006](0006-isa-95-equipment-hierarchy-as-shared-vocabulary.md) | ISA-95 equipment hierarchy, owned by the ERP, shared by the graph and the UNS | Accepted | 5 |
 | [0007](0007-unified-namespace-conventions.md) | Unified Namespace conventions and ISA-95 message names | Accepted (built in Wave 6) | 5, 6 |
 | [0008](0008-exact-decimals-in-api-responses.md) | Money and quantities in API responses are exact decimal strings | Accepted | 5b |
+| [0009](0009-mes-in-its-own-repository.md) | The MES lives in its own repository; the UNS contract is the only link | Accepted | 6 |
+| [0010](0010-idempotency-of-every-state-changing-operation.md) | Every operation that changes data is idempotent (`Idempotency-Key`, event IDs) | Accepted | 5c |

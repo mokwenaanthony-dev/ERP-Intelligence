@@ -47,10 +47,14 @@ def _company_child_key(obj):
 # --- master data -----------------------------------------------------------------------------
 
 def company_code(g, c):
+    """``CompanyCode`` node: name and currency."""
     g.node("CompanyCode", c.code, {"name": c.name, "currency": c.currency.code})
 
 
 def business_partner(g, bp):
+    """``BusinessPartner`` node, labelled ``Customer`` and/or ``Supplier`` by its roles, with
+    CUSTOMER_OF / SUPPLIER_OF edges to each company code (payment terms, credit limit).
+    """
     extra = []
     for role in bp.customer_roles.select_related("company_code"):
         extra.append("Customer")
@@ -67,15 +71,18 @@ def business_partner(g, bp):
 
 
 def partner_role(g, role):
+    """A customer or supplier role changed: re-project the partner that owns it."""
     business_partner(g, role.business_partner)
 
 
 def material(g, m):
+    """``Material`` node: description, material type and whether it is active."""
     g.node("Material", m.number, {"description": m.description, "material_type": m.material_type,
                                   "is_active": m.is_active})
 
 
 def plant(g, p):
+    """``Plant`` node, BELONGS_TO its company code and ASSIGNED_TO its default profit centre."""
     g.node("Plant", p.code, {"name": p.name})
     g.edge("Plant", p.code, "BELONGS_TO", "CompanyCode", p.company_code.code)
     g.clear_edges("Plant", p.code, "ASSIGNED_TO")
@@ -85,16 +92,19 @@ def plant(g, p):
 
 
 def plant_profit_center(g, link):
+    """A plant's profit centre assignment changed: re-project the plant."""
     plant(g, link.plant)
 
 
 def profit_center(g, pc):
+    """``ProfitCenter`` node, BELONGS_TO its company code."""
     key = _company_child_key(pc)
     g.node("ProfitCenter", key, {"code": pc.code, "name": pc.name, "is_active": pc.is_active})
     g.edge("ProfitCenter", key, "BELONGS_TO", "CompanyCode", pc.company_code.code)
 
 
 def cost_center(g, cc):
+    """``CostCenter`` node, BELONGS_TO its profit centre."""
     key = _company_child_key(cc)
     g.node("CostCenter", key, {"code": cc.code, "name": cc.name, "category": cc.category, "is_active": cc.is_active})
     g.clear_edges("CostCenter", key, "BELONGS_TO")
@@ -102,6 +112,7 @@ def cost_center(g, cc):
 
 
 def org_unit(g, unit):
+    """``OrgUnit`` node: BELONGS_TO the company, PART_OF its parent unit, CHARGED_TO its cost centre."""
     key = _company_child_key(unit)
     g.node("OrgUnit", key, {"code": unit.code, "name": unit.name})
     for rel in ("PART_OF", "CHARGED_TO", "BELONGS_TO"):
@@ -118,6 +129,7 @@ def _position_key(position):
 
 
 def position(g, pos):
+    """``Position`` node: IN its org unit, CHARGED_TO its own cost centre if it has one."""
     key = _position_key(pos)
     g.node("Position", key, {"code": pos.code, "title": pos.title})
     g.clear_edges("Position", key, "IN")
@@ -128,6 +140,7 @@ def position(g, pos):
 
 
 def employee(g, e):
+    """``Employee`` node (name and dates, never pay data): HOLDS a position, EMPLOYED_BY the company."""
     key = f"{e.company_code.code}/{e.personnel_number}"
     # Deliberately no salary or tax reference: pay data stays in the ERP, behind HR permissions.
     g.node("Employee", key, {"personnel_number": e.personnel_number, "name": e.full_name,
@@ -144,6 +157,7 @@ def _plant_child_key(obj):
 
 
 def production_area(g, area):
+    """``Area`` node (ISA-95 area) with its UNS path, PART_OF its plant."""
     key = _plant_child_key(area)
     g.node("Area", key, {"code": area.code, "name": area.name, "isa95_level": area.isa95_level,
                          "uns_path": area.uns_path, "is_active": area.is_active})
@@ -151,6 +165,7 @@ def production_area(g, area):
 
 
 def production_line(g, line):
+    """``Line`` node (ISA-95 work centre of type production line), PART_OF its area."""
     key = _plant_child_key(line)
     g.node("Line", key, {"code": line.code, "name": line.name, "isa95_level": line.isa95_level,
                          "isa95_type": line.isa95_type, "uns_path": line.uns_path, "is_active": line.is_active})
@@ -158,6 +173,9 @@ def production_line(g, line):
 
 
 def work_center(g, wc):
+    """``Cell`` node (the ERP's work centre, an ISA-95 work cell): PART_OF its line, CHARGED_TO
+    the cost centre its activity is costed through.
+    """
     key = _plant_child_key(wc)
     # Labelled "Cell" (ISA-95), although the ERP calls it a work centre (SAP): see ADR 0006.
     g.node("Cell", key, {"code": wc.code, "name": wc.name, "isa95_level": wc.isa95_level,
@@ -171,6 +189,7 @@ def work_center(g, wc):
 
 
 def bill_of_materials(g, bom):
+    """``BOM`` node: FOR the product it makes, CONSUMES each component (quantity per base quantity)."""
     g.node("BOM", bom.key, {"material": bom.material.number, "plant": bom.plant.code, "valid_from": bom.valid_from,
                             "base_quantity": bom.base_quantity, "status": bom.status})
     g.edge("BOM", bom.key, "FOR", "Material", bom.material.number)
@@ -181,6 +200,7 @@ def bill_of_materials(g, bom):
 
 
 def routing(g, r):
+    """``Routing`` node: FOR the product, HAS_OPERATION to the cell of each operation."""
     g.node("Routing", r.key, {"material": r.material.number, "plant": r.plant.code, "valid_from": r.valid_from,
                               "base_quantity": r.base_quantity, "status": r.status})
     g.edge("Routing", r.key, "FOR", "Material", r.material.number)
@@ -191,6 +211,9 @@ def routing(g, r):
 
 
 def production_order(g, order):
+    """``ProductionOrder`` node: PRODUCES the product, MADE_AT the plant, CONSUMES its components
+    (quantity for the whole order) and HAS_OPERATION to the cell of each operation.
+    """
     key = _doc_key(order, "order_number")
     g.node("ProductionOrder", key, {
         "number": order.order_number, "status": order.status, "quantity": order.quantity,
@@ -211,6 +234,7 @@ def production_order(g, order):
 # --- order to cash ---------------------------------------------------------------------------
 
 def sales_order(g, order):
+    """``SalesOrder`` node: PLACED by the customer, CONTAINS each ordered material."""
     key = _doc_key(order, "order_number")
     g.node("SalesOrder", key, {"number": order.order_number, "date": order.order_date, "status": order.status,
                                "net_total": order.net_total, "customer_reference": order.customer_reference})
@@ -222,6 +246,7 @@ def sales_order(g, order):
 
 
 def delivery(g, d):
+    """``Delivery`` node: the order is DELIVERED_BY it; SHIPPED_FROM a plant; SHIPS each material."""
     key = _doc_key(d, "delivery_number")
     g.node("Delivery", key, {"number": d.delivery_number, "date": d.delivery_date, "status": d.status})
     g.edge("SalesOrder", _doc_key(d.sales_order, "order_number"), "DELIVERED_BY", "Delivery", key)
@@ -233,6 +258,7 @@ def delivery(g, d):
 
 
 def invoice(g, inv):
+    """``Invoice`` node: the delivery is BILLED_BY it; BILLED_TO the customer."""
     key = _doc_key(inv, "invoice_number")
     g.node("Invoice", key, {"number": inv.invoice_number, "date": inv.invoice_date, "due_date": inv.due_date,
                             "net_amount": inv.net_amount, "tax_amount": inv.tax_amount,
@@ -244,6 +270,9 @@ def invoice(g, inv):
 # --- procure to pay --------------------------------------------------------------------------
 
 def purchase_order(g, order):
+    """``PurchaseOrder`` node: ORDERED_FROM the supplier, CONTAINS each material; the supplier
+    SUPPLIES each material of a non-cancelled order.
+    """
     key = _doc_key(order, "order_number")
     g.node("PurchaseOrder", key, {"number": order.order_number, "date": order.order_date, "status": order.status,
                                   "net_total": order.net_total})
@@ -257,6 +286,7 @@ def purchase_order(g, order):
 
 
 def goods_receipt(g, receipt):
+    """``GoodsReceipt`` node: the purchase order is RECEIVED_BY it; RECEIVED_AT a plant."""
     key = _doc_key(receipt, "receipt_number")
     g.node("GoodsReceipt", key, {"number": receipt.receipt_number, "date": receipt.receipt_date,
                                  "status": receipt.status, "delivery_note": receipt.delivery_note})
@@ -265,6 +295,7 @@ def goods_receipt(g, receipt):
 
 
 def supplier_invoice(g, inv):
+    """``SupplierInvoice`` node: the purchase order is BILLED_BY it; BILLED_BY_SUPPLIER the supplier."""
     key = _doc_key(inv, "invoice_number")
     g.node("SupplierInvoice", key, {"number": inv.invoice_number, "supplier_reference": inv.supplier_reference,
                                     "date": inv.invoice_date, "due_date": inv.due_date,
@@ -284,6 +315,10 @@ def payment_key(entry):
 
 
 def journal_entry(g, entry):
+    """``Payment`` node for DZ / KZ entries (other journal entries are not projected): PAID by or
+    PAID_TO the partner, and PAID_BY edges from the invoices it cleared. A reversal updates the
+    status of the payment it reverses.
+    """
     if entry.reversal_of_id:  # a reversal changes the status of the payment it reverses
         entry = entry.reversal_of
     if entry.document_type not in PAYMENT_TYPES:

@@ -249,6 +249,7 @@ def explode_bom(material, plant, quantity: Decimal, on: date) -> list[dict]:
     rows = []
 
     def walk(current_bom, required, level, path):
+        """Add the components of one BOM at ``level``, then explode each one that has its own BOM."""
         if level > MAX_LEVELS:
             raise ProductionError(f"BOM of {material.number} is deeper than {MAX_LEVELS} levels.")
         for item in current_bom.items.select_related("component__base_unit").order_by("item_number"):

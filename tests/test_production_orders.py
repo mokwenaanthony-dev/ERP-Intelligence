@@ -126,10 +126,13 @@ def test_bracket_order_with_a_variance_is_settled(pp, planner, client_for):
     assert issued.status_code == 201, issued.data
     confirmation = {"posting_date": "2026-06-02", "operation_number": 10, "yield_quantity": "100",
                     "activities": {"LAB": "26"}, "final": True, "external_id": "mes-evt-0001"}
-    assert planner.post(f"{url}/confirmations/", confirmation, format="json").status_code == 201
-    # The MES may deliver the same message twice: the repeat is refused, so the work is charged once.
+    first = planner.post(f"{url}/confirmations/", confirmation, format="json")
+    assert first.status_code == 201
+    # The MES may deliver the same message twice (ADR 0010): the repeat returns the first confirmation,
+    # so the work is charged once and the MES gets the same answer.
     repeat = planner.post(f"{url}/confirmations/", confirmation, format="json")
-    assert repeat.status_code == 400 and "already posted" in str(repeat.data)
+    assert repeat.status_code == 201 and repeat.data == first.data
+    assert ProductionOrder.objects.get(pk=created.data["id"]).confirmations.count() == 1
     planner.post(f"{url}/receive/", {"posting_date": "2026-06-02", "quantity": "100"}, format="json")
 
     done = client_for(Role.FINANCE_MANAGER).post(f"{url}/complete/", {"posting_date": "2026-06-02"}, format="json")
@@ -367,3 +370,14 @@ def _decimals(data):
     elif isinstance(data, list):
         for value in data:
             yield from _decimals(value)
+
+
+def test_confirmation_events_are_idempotent(pp):
+    order = frame_order(pp, "10")
+    first = orders.confirm_operation(order, 10, JUNE_1, yield_quantity=D("10"), final=True, external_id="evt-1")
+    orders.complete_order(order, JUNE_1)
+    # Delivered again after the order was completed: still the first answer, nothing charged twice.
+    again = orders.confirm_operation(order, 10, JUNE_2, yield_quantity=D("10"), final=True, external_id="evt-1")
+    assert (again.pk, again.journal_entry_id) == (first.pk, first.journal_entry_id)
+    with pytest.raises(ProductionError, match="already used for operation 10"):
+        orders.confirm_operation(order, 20, JUNE_1, yield_quantity=D("1"), external_id="evt-1")

@@ -1,9 +1,23 @@
+from uuid import uuid4
+
 import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 
 PASSWORD = "Str0ng-Test-Pass!"  # nosec B105
+
+
+class IdempotentAPIClient(APIClient):
+    """A well-behaved client (ADR 0010): a fresh Idempotency-Key on every request that changes data,
+    unless the test gives one itself to exercise retries."""
+
+    def generic(self, method, path, *args, **kwargs):
+        headers = kwargs.get("headers") or {}
+        if method.upper() in {"POST", "PUT", "PATCH", "DELETE"} and "HTTP_IDEMPOTENCY_KEY" not in kwargs \
+                and "Idempotency-Key" not in headers:
+            kwargs["HTTP_IDEMPOTENCY_KEY"] = uuid4().hex
+        return super().generic(method, path, *args, **kwargs)
 
 
 @pytest.fixture
@@ -20,7 +34,7 @@ def client_for(make_user):
     """APIClient authenticated as a fresh user with the given role."""
 
     def _client(role):
-        client = APIClient()
+        client = IdempotentAPIClient()
         user = make_user(role)
         client.force_authenticate(user=user)
         client.user = user
@@ -31,7 +45,7 @@ def client_for(make_user):
 
 @pytest.fixture
 def anon_client():
-    return APIClient()
+    return IdempotentAPIClient()
 
 
 @pytest.fixture

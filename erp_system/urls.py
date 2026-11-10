@@ -2,8 +2,9 @@
 """
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.accounts.views import LogoutView
 from apps.common.views import health
 
 urlpatterns = [
@@ -13,7 +14,7 @@ urlpatterns = [
     # JWT authentication (design document, section 3)
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
-    path("api/auth/logout/", TokenBlacklistView.as_view(), name="token_blacklist"),
+    path("api/auth/logout/", LogoutView.as_view(), name="token_blacklist"),  # repeatable (ADR 0010)
 
     # ERP modules
     path("api/org/", include("apps.organization.urls")),
