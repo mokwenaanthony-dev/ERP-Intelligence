@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.sales",
     "apps.purchasing",
     "apps.hr",
+    "apps.production",
 ]
 
 MIDDLEWARE = [
@@ -224,8 +225,10 @@ LOGGING = {
         # pytest's caplog can still see them.)
         "erp": {"handlers": ["console", "file", "errors"], "level": LOG_LEVEL},
         "apps": {"handlers": ["console", "file", "errors"], "level": LOG_LEVEL},
-        # Django's own request errors (e.g. a crash outside the API) and Celery's task log.
-        "django.request": {"handlers": ["console", "file", "errors"], "level": "WARNING", "propagate": False},
+        # Django's own request log. ERROR only: the API already logs every 4xx once, with its request ID
+        # (apps/common/exceptions.py), so Django's WARNING for the same response would be a duplicate.
+        # Celery's task log.
+        "django.request": {"handlers": ["console", "file", "errors"], "level": "ERROR", "propagate": False},
         "celery": {"handlers": ["console", "file", "errors"], "level": "INFO", "propagate": False},
     },
 }

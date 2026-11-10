@@ -12,6 +12,7 @@ urlpatterns = [
     path("customer-360/<str:number>/", views.Customer360View.as_view(), name="customer-360"),
     path("document-flow/", views.DocumentFlowView.as_view(), name="document-flow"),
     path("supplier-dependency/", views.SupplierDependencyView.as_view(), name="supplier-dependency"),
+    path("where-used/<str:material>/", views.WhereUsedView.as_view(), name="where-used"),
     path("context/", views.ContextView.as_view(), name="graph-context"),
     path("rebuild/", views.RebuildView.as_view(), name="graph-rebuild"),
 ]

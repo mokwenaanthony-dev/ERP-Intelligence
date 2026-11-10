@@ -174,3 +174,43 @@ def test_money_is_stored_as_numbers(graph):
     [row] = get_store().read("MATCH (i:Invoice) RETURN i.gross_amount AS amount LIMIT 1")
     assert isinstance(row["amount"], float)
     assert Decimal(str(row["amount"])) > 0
+
+
+def test_where_used_across_bom_levels_and_open_orders(graph, make_user, client_for):
+    """Steel sheet goes into the pressed frame, which goes into the bracket: a shortage of steel puts
+    every open bracket order at risk. The answer must come from two BOM levels in the graph."""
+    from datetime import date
+
+    from apps.masterdata.models import Material
+    from apps.organization.models import SalesOrganization
+    from apps.sales import services as sales
+
+    call_command("setup_demo_production", stdout=StringIO())
+    order = sales.create_sales_order(
+        sales_organization=SalesOrganization.objects.get(code="1000"), customer=coastal(),
+        order_date=date(2026, 6, 2),
+        items=[sales.OrderItemInput(Material.objects.get(number="FG-4001"), Decimal("20"))])
+    sales.confirm_order(order)
+    assert processor.process_outbox(limit=100000, store=get_store())["failed"] == 0
+
+    result = queries.where_used("RM-2001", labels_for(make_user, Role.SALES_REP))
+    assert [(row["level"], row["component"], row["product"]) for row in result["used_in"]] == [
+        (1, "RM-2001", "SF-3001"), (2, "SF-3001", "FG-4001")]
+    assert result["used_in"][0]["quantity"] == 2.5
+    [open_order] = result["open_sales_orders"]
+    assert (open_order["sales_order"], open_order["product"], open_order["customer"]) == (
+        f"1000/{order.order_number}", "FG-4001", "Coastal Hardware (Pty) Ltd")
+
+    # Roles that may not see sales get the product structure only.
+    hidden = queries.where_used("RM-2001", labels_for(make_user, Role.HR_ADMIN))
+    assert "open_sales_orders" not in hidden and len(hidden["used_in"]) == 2
+    assert queries.where_used("NOPE", labels_for(make_user, Role.SALES_REP)) is None
+
+    api = client_for(Role.PRODUCTION_PLANNER)
+    response = api.get("/api/graph/where-used/rm-2001/")
+    assert response.status_code == 200 and response.data["open_sales_orders"]
+    assert api.get("/api/graph/where-used/NOPE/").status_code == 404
+
+    cell = get_store().read("MATCH (c:Cell {key: '1000/PRESS3'})-[:PART_OF*3]->(p:Plant) "
+                            "RETURN c.uns_path AS path, p.key AS plant")
+    assert cell == [{"path": "1000/1000/assy/l1/press3", "plant": "1000"}]

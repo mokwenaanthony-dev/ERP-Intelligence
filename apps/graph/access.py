@@ -7,7 +7,8 @@ from apps.accounts.models import Role
 
 from .projection import ALL_LABELS
 
-BASE = {"CompanyCode", "Plant", "Material", "ProfitCenter", "CostCenter"}
+# Production master data (equipment, BOMs, routings) is visible to everyone, as in the API.
+BASE = {"CompanyCode", "Plant", "Material", "ProfitCenter", "CostCenter", "Area", "Line", "Cell", "BOM", "Routing"}
 SALES = {"BusinessPartner", "SalesOrder", "Delivery", "Invoice", "Payment"}
 PURCHASING = {"BusinessPartner", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice"}
 PEOPLE = {"OrgUnit", "Position", "Employee"}
@@ -20,6 +21,7 @@ ROLE_LABELS = {
     Role.PURCHASING_OFFICER: BASE | PURCHASING,
     Role.INVENTORY_MANAGER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
     Role.HR_ADMIN: BASE | PEOPLE,
+    Role.PRODUCTION_PLANNER: BASE | {"BusinessPartner", "SalesOrder", "PurchaseOrder", "GoodsReceipt"},
     Role.VIEWER: BASE | {"BusinessPartner", "SalesOrder", "Delivery", "PurchaseOrder", "GoodsReceipt"},
 }
 

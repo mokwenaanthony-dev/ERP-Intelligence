@@ -189,6 +189,7 @@ class Material(AuditedModel):
     class MaterialType(models.TextChoices):
         TRADING_GOODS = "HAWA", "Trading goods"
         FINISHED = "FERT", "Finished product"
+        SEMI_FINISHED = "HALB", "Semi-finished product"
         RAW = "ROH", "Raw material"
         SERVICE = "DIEN", "Service"
 

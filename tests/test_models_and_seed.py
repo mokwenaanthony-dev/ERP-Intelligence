@@ -7,6 +7,7 @@ from apps.accounts.models import Role, User
 from apps.finance.models import JournalEntry
 from apps.inventory.models import MaterialDocument
 from apps.organization.models import CompanyCode
+from apps.production.models import BillOfMaterials, WorkCenter
 from apps.sales.models import SalesPrice
 
 pytestmark = pytest.mark.django_db
@@ -26,6 +27,8 @@ def test_seed_data_creates_every_role_and_the_demo_company_and_is_repeatable():
     assert set(User.objects.values_list("role", flat=True)) == set(Role.values)
     assert User.objects.get(username="admin").is_superuser
     assert CompanyCode.objects.count() == 1
-    assert JournalEntry.objects.count() == 3
-    assert MaterialDocument.objects.count() == 1
-    assert SalesPrice.objects.count() == 2
+    # Demo company: capital, invoice, opening stock. Demo production: opening stock of raw materials.
+    assert JournalEntry.objects.count() == 4
+    assert MaterialDocument.objects.count() == 2
+    assert SalesPrice.objects.count() == 3  # TG-1001, TG-1002 and FG-4001
+    assert WorkCenter.objects.count() == 2 and BillOfMaterials.objects.count() == 2

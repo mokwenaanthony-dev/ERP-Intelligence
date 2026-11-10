@@ -1,4 +1,4 @@
-"""Knowledge graph API: Customer 360, document flow, supplier dependency, KG-RAG context, status
+"""Knowledge graph API: Customer 360, document flow, supplier dependency, where used, KG-RAG context, status
 and rebuild.
 
 Every query is filtered by the caller's role (``access.py``), so the graph never shows a user more
@@ -6,7 +6,7 @@ than the relational API would. Returns 503 when the graph is switched off (no ``
 """
 from django.conf import settings
 from rest_framework import serializers, status
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -86,6 +86,18 @@ class SupplierDependencyView(_GraphView):
         company_code = _company_code(request)
         return Response({"company_code": company_code.code,
                          "materials": queries.supplier_dependency(company_code.code, self.allowed)})
+
+
+class WhereUsedView(_GraphView):
+    """GET /api/graph/where-used/<material>/ - products that use a material at any BOM level, and the
+    open sales orders for them (shown only to roles that may see sales)."""
+
+    def get(self, request, material):
+        self.require("BOM", "Material")
+        result = queries.where_used(material.upper(), self.allowed)
+        if result is None:
+            raise NotFound(f"Material {material} is not in the graph.")
+        return Response(result)
 
 
 class ContextView(_GraphView):

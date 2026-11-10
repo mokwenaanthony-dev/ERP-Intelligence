@@ -24,6 +24,7 @@ SEED_USERS = [
     ("inventory_manager", Role.INVENTORY_MANAGER, {}),
     ("purchasing_officer", Role.PURCHASING_OFFICER, {}),
     ("hr_admin", Role.HR_ADMIN, {"is_staff": True}),
+    ("production_planner", Role.PRODUCTION_PLANNER, {}),
     ("viewer", Role.VIEWER, {}),
 ]
 
@@ -46,6 +47,8 @@ class Command(BaseCommand):
 
         self.stdout.write("Setting up the demo company...")
         call_command("setup_demo_company", stdout=self.stdout)
+        self.stdout.write("Setting up demo production master data...")
+        call_command("setup_demo_production", stdout=self.stdout)
 
         self.stdout.write(self.style.SUCCESS(f"Done. Seed users all use the password: {DEFAULT_PASSWORD}"))
         self.stdout.write(self.style.WARNING("Change these passwords before using this anywhere but your own machine."))
