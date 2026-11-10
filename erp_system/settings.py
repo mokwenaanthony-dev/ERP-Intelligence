@@ -63,6 +63,9 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # ISO 27001 access tracking - one log line per request.
     "apps.common.middleware.OperationalPerformanceMiddleware",
+    # Idempotency-Key on every request that changes data (ADR 0010). After the request-ID middleware,
+    # so replays and refusals are logged with the request ID.
+    "apps.common.idempotency.IdempotencyMiddleware",
 ]
 
 ROOT_URLCONF = "erp_system.urls"
@@ -168,7 +171,11 @@ CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 CELERY_BEAT_SCHEDULE = {
     "refresh-analytics-views": {"task": "analytics.refresh_views", "schedule": 15 * 60},
     "project-outbox-to-graph": {"task": "graph.process_outbox", "schedule": 10},
+    "purge-idempotency-keys": {"task": "common.purge_idempotency_keys", "schedule": 24 * 60 * 60},
 }
+
+# How long a client may retry a request with the same Idempotency-Key and get the first answer (ADR 0010).
+IDEMPOTENCY_TTL_DAYS = config("IDEMPOTENCY_TTL_DAYS", default=7, cast=int)
 
 # --- Knowledge graph (Neo4j) --------------------------------------------------
 # Off unless NEO4J_URI is set: then business changes are written to the outbox and projected.

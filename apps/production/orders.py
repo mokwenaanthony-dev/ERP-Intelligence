@@ -260,13 +260,23 @@ def confirm_operation(order, operation_number: int, posting_date: date, *, yield
 
     ``activities`` maps activity type codes to the quantity worked. Without it, the planned activity
     is used: in proportion to the quantity reported, or, for a final confirmation, whatever is still
-    planned. ``external_id`` (e.g. the MES event ID) makes the call safe to repeat: a second
-    confirmation with the same ID is refused, so a message delivered twice is charged once.
+    planned. ``external_id`` (e.g. the MES event ID) makes the call idempotent (ADR 0010): the same
+    ID again returns the confirmation posted the first time, so a message delivered twice is charged
+    once and the sender gets the same answer both times.
     """
     order = _lock(order)
+    if external_id:
+        # Idempotency (ADR 0010): the same event again returns the confirmation it created the first
+        # time, even if the order has since been completed. Checked before any other rule for that reason.
+        existing = order.confirmations.select_related("operation").filter(external_id=external_id).first()
+        if existing is not None:
+            if existing.operation.operation_number != operation_number:
+                raise ProductionError(f"Event {external_id} was already used for operation "
+                                      f"{existing.operation.operation_number} of order {order.order_number}.")
+            logger.info("Confirmation event %s for order %s was already posted as %s; returning it",
+                        external_id, order.order_number, existing.confirmation_number)
+            return existing
     _require_released(order)
-    if external_id and order.confirmations.filter(external_id=external_id).exists():
-        raise ProductionError(f"Confirmation {external_id} for order {order.order_number} was already posted.")
     operation = order.operations.select_related("work_center__cost_center").filter(
         operation_number=operation_number).first()
     if operation is None:

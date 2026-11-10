@@ -40,3 +40,29 @@ class AuditedModel(TimeStampedModel):
 
     class Meta:
         abstract = True
+
+
+class IdempotencyRecord(models.Model):
+    """One ``Idempotency-Key`` a user sent, and the response to replay if the request comes again (ADR 0010).
+
+    ``status_code`` is empty while the first request is still running. Only successful responses are
+    kept; a failed request deletes its record, because it changed nothing and may be retried.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    key = models.CharField(max_length=128)
+    method = models.CharField(max_length=7)
+    path = models.CharField(max_length=255)
+    fingerprint = models.CharField(max_length=64, help_text="SHA-256 of method, path and request body.")
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    content_type = models.CharField(max_length=100, blank=True)
+    response_body = models.TextField(blank=True)
+    created_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "key"], name="unique_idempotency_key_per_user")]
+        indexes = [models.Index(fields=["created_at"], name="idempotency_created_idx")]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.key} {self.method} {self.path} -> {self.status_code}"

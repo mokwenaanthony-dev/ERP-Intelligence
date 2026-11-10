@@ -50,6 +50,7 @@ class MemoryStore:
         self.edges = {}  # (from_label, from_key, type, to_label, to_key, merge_on items) -> props
 
     def node(self, label, key, props=None, extra_labels=()):
+        """Create or update a node; a property set to None is removed."""
         entry = self.nodes.setdefault((_name(label), key), {"labels": {label}, "props": {"key": key}})
         entry["labels"].update(_name(extra) for extra in extra_labels)
         for name, value in clean(props or {}).items():
@@ -59,6 +60,9 @@ class MemoryStore:
                 entry["props"][name] = value
 
     def edge(self, from_label, from_key, rel_type, to_label, to_key, props=None, merge_on=None):
+        """Create or update a relationship (creating missing end nodes); ``merge_on`` tells apart
+        several relationships of the same type between the same two nodes.
+        """
         self.node(from_label, from_key)
         self.node(to_label, to_key)
         identity = tuple(sorted(clean(merge_on or {}).items()))
@@ -66,10 +70,12 @@ class MemoryStore:
         self.edges.setdefault(key, dict(identity)).update(clean(props or {}))
 
     def clear_edges(self, label, key, rel_type):
+        """Remove a node's outgoing relationships of one type (before re-adding the current ones)."""
         for edge_key in [k for k in self.edges if k[0] == label and k[1] == key and k[2] == rel_type]:
             del self.edges[edge_key]
 
     def delete_node(self, label, key):
+        """Remove a node and every relationship touching it."""
         self.nodes.pop((label, key), None)
         for edge_key in [k for k in self.edges if (k[0], k[1]) == (label, key) or (k[3], k[4]) == (label, key)]:
             del self.edges[edge_key]
@@ -78,6 +84,7 @@ class MemoryStore:
         """Nothing to send: changes are applied immediately."""
 
     def clear(self):
+        """Empty the whole graph."""
         self.nodes.clear()
         self.edges.clear()
 
@@ -114,11 +121,13 @@ class Neo4jStore:
         self.driver.close()
 
     def node(self, label, key, props=None, extra_labels=()):
+        """Queue a MERGE of the node; written on the next ``flush()``."""
         extra = "".join(f" SET n:`{_name(name)}`" for name in extra_labels)
         self.pending.append((f"MERGE (n:`{_name(label)}` {{key: $key}}) SET n += $props{extra}",
                              {"key": key, "props": clean(props or {})}))
 
     def edge(self, from_label, from_key, rel_type, to_label, to_key, props=None, merge_on=None):
+        """Queue a MERGE of both end nodes and the relationship; written on the next ``flush()``."""
         merge_on = clean(merge_on or {})
         identity = ", ".join(f"{name}: $m_{name}" for name in merge_on)
         identity = f" {{{identity}}}" if identity else ""
@@ -129,18 +138,22 @@ class Neo4jStore:
         self.pending.append((cypher, params))
 
     def clear_edges(self, label, key, rel_type):
+        """Queue deleting a node's outgoing relationships of one type."""
         self.pending.append((f"MATCH (:`{_name(label)}` {{key: $key}})-[r:`{_name(rel_type)}`]->() DELETE r",
                              {"key": key}))
 
     def delete_node(self, label, key):
+        """Queue a DETACH DELETE of the node."""
         self.pending.append((f"MATCH (n:`{_name(label)}` {{key: $key}}) DETACH DELETE n", {"key": key}))
 
     def flush(self):
+        """Write every queued statement in one Neo4j transaction: all or nothing."""
         statements, self.pending = self.pending, []
         if not statements:
             return
 
         def write(tx):
+            """Run the queued statements inside the transaction Neo4j gives us."""
             for cypher, params in statements:
                 tx.run(cypher, params).consume()
 

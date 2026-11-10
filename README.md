@@ -55,7 +55,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware knowledge-graph retrieval (KG-RAG) | Done |
 | 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | Done |
 | 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | Done |
-| 5b | Production orders: release, goods issue to the order (261), confirmations charging machine and labour hours, goods receipt from the order (101), settlement of variances, planned-against-actual costs; exact decimals in every API response | In review |
+| 5b | Production orders: release, goods issue to the order (261), confirmations charging machine and labour hours, goods receipt from the order (101), settlement of variances, planned-against-actual costs; exact decimals in every API response | Done |
+| 5c | Idempotency everywhere: a required `Idempotency-Key` on every request that changes data (the first answer is replayed on retry, nothing posts twice); MES events replay their first confirmation | In review |
 | 6 | MES integration: Unified Namespace (MQTT, ISA-95 topic paths from the Wave 5 hierarchy), ERP events published to it, shop-floor events mapped to ERP postings | Planned |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
@@ -504,6 +505,32 @@ Open http://localhost:3000 and sign in with the Metabase admin from `.env`. Two 
 Metabase connects as `erp_reporting`, a PostgreSQL role that can only read the analytics views and
 lookup tables (no journal lines, no employee records), in read-only sessions. The dashboards are
 defined in `scripts/metabase_setup.py`, so they can be rebuilt on any machine.
+
+## Idempotent requests
+
+Every operation can be repeated safely: sending it again gives **the same result as sending it once**,
+for the data and for the caller ([ADR 0010](docs/decisions/0010-idempotency-of-every-state-changing-operation.md)).
+A client that times out can always retry without posting a payment, goods movement or invoice twice.
+
+```bash
+KEY=$(python -c "import uuid; print(uuid.uuid4())")       # one key per intended operation
+curl -X POST .../api/finance/journal-entries/ -H "Idempotency-Key: $KEY" -H "$AUTH" -d @entry.json
+curl -X POST .../api/finance/journal-entries/ -H "Idempotency-Key: $KEY" -H "$AUTH" -d @entry.json
+# second call: the same 201 and the same document number, header Idempotent-Replayed: true, nothing posted
+```
+
+| Situation | Answer |
+|---|---|
+| POST, PUT, PATCH or DELETE under `/api/` without the header | 428: send a key |
+| Same key, same request, first one succeeded | The stored response, byte for byte, with `Idempotent-Replayed: true` |
+| Same key, different request | 422: a new operation needs a new key |
+| Same key while the first is still running | 409: retry shortly |
+| First one failed (4xx/5xx) | Not stored, nothing was changed: the retry runs again |
+
+Keys belong to the signed-in user and are kept for 7 days (`IDEMPOTENCY_TTL_DAYS`). Signing in is
+exempt; logging out twice simply succeeds twice. Messages from the MES use their event ID the same
+way: a repeated confirmation returns the one posted the first time. The Postman collection sends a
+fresh `{{$guid}}` key with every such request.
 
 ## Logging and troubleshooting
 
