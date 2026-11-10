@@ -13,6 +13,11 @@ graph without mapping tables.
     (:PurchaseOrder)-[:ORDERED_FROM]->(:BusinessPartner:Supplier)-[:SUPPLIES]->(:Material)
     (:PurchaseOrder)-[:RECEIVED_BY]->(:GoodsReceipt), (:PurchaseOrder)-[:BILLED_BY]->(:SupplierInvoice)
     (:Employee)-[:HOLDS]->(:Position)-[:IN]->(:OrgUnit)-[:CHARGED_TO]->(:CostCenter)-[:BELONGS_TO]->(:ProfitCenter)
+    (:Cell)-[:PART_OF]->(:Line)-[:PART_OF]->(:Area)-[:PART_OF]->(:Plant), (:Cell)-[:CHARGED_TO]->(:CostCenter)
+    (:BOM)-[:FOR]->(:Material), (:BOM)-[:CONSUMES]->(:Material), (:Routing)-[:HAS_OPERATION]->(:Cell)
+
+Equipment nodes use ISA-95 names (ADR 0006) and carry their ISA-95 level and Unified Namespace topic
+path (``uns_path``). The full ontology, with every property, is documented in ``docs/ONTOLOGY.md``.
 
 Pay data never enters the graph: employees carry name, dates and position only.
 """
@@ -21,7 +26,8 @@ from django.apps import apps
 DOCUMENT_LABELS = ["SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice",
                    "Payment"]
 MASTER_LABELS = ["CompanyCode", "BusinessPartner", "Material", "Plant", "ProfitCenter", "CostCenter", "OrgUnit",
-                 "Position", "Employee"]
+                 "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing"]
+ONTOLOGY_VERSION = "1.1"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
 ALL_LABELS = MASTER_LABELS + DOCUMENT_LABELS
 
 
@@ -127,6 +133,59 @@ def employee(g, e):
     g.clear_edges("Employee", key, "HOLDS")
     g.edge("Employee", key, "HOLDS", "Position", _position_key(e.position))
     g.edge("Employee", key, "EMPLOYED_BY", "CompanyCode", e.company_code.code)
+
+
+# --- production master data (ISA-95 equipment hierarchy, BOMs, routings) ----------------------
+
+def _plant_child_key(obj):
+    return f"{obj.plant.code}/{obj.code}"
+
+
+def production_area(g, area):
+    key = _plant_child_key(area)
+    g.node("Area", key, {"code": area.code, "name": area.name, "isa95_level": area.isa95_level,
+                         "uns_path": area.uns_path, "is_active": area.is_active})
+    g.edge("Area", key, "PART_OF", "Plant", area.plant.code)
+
+
+def production_line(g, line):
+    key = _plant_child_key(line)
+    g.node("Line", key, {"code": line.code, "name": line.name, "isa95_level": line.isa95_level,
+                         "isa95_type": line.isa95_type, "uns_path": line.uns_path, "is_active": line.is_active})
+    g.edge("Line", key, "PART_OF", "Area", _plant_child_key(line.area))
+
+
+def work_center(g, wc):
+    key = _plant_child_key(wc)
+    # Labelled "Cell" (ISA-95), although the ERP calls it a work centre (SAP): see ADR 0006.
+    g.node("Cell", key, {"code": wc.code, "name": wc.name, "isa95_level": wc.isa95_level,
+                         "uns_path": wc.uns_path, "is_active": wc.is_active,
+                         "capacity_hours_per_day": wc.capacity_hours_per_day,
+                         "activity_types": sorted(a.code for a in wc.activity_types.all())})
+    for rel in ("PART_OF", "CHARGED_TO"):
+        g.clear_edges("Cell", key, rel)
+    g.edge("Cell", key, "PART_OF", "Line", _plant_child_key(wc.line))
+    g.edge("Cell", key, "CHARGED_TO", "CostCenter", _company_child_key(wc.cost_center))
+
+
+def bill_of_materials(g, bom):
+    g.node("BOM", bom.key, {"material": bom.material.number, "plant": bom.plant.code, "valid_from": bom.valid_from,
+                            "base_quantity": bom.base_quantity, "status": bom.status})
+    g.edge("BOM", bom.key, "FOR", "Material", bom.material.number)
+    g.clear_edges("BOM", bom.key, "CONSUMES")
+    for item in bom.items.select_related("component"):
+        g.edge("BOM", bom.key, "CONSUMES", "Material", item.component.number, {"quantity": item.quantity},
+               merge_on={"item_number": item.item_number})
+
+
+def routing(g, r):
+    g.node("Routing", r.key, {"material": r.material.number, "plant": r.plant.code, "valid_from": r.valid_from,
+                              "base_quantity": r.base_quantity, "status": r.status})
+    g.edge("Routing", r.key, "FOR", "Material", r.material.number)
+    g.clear_edges("Routing", r.key, "HAS_OPERATION")
+    for op in r.operations.select_related("work_center__plant"):
+        g.edge("Routing", r.key, "HAS_OPERATION", "Cell", _plant_child_key(op.work_center),
+               {"description": op.description}, merge_on={"operation_number": op.operation_number})
 
 
 # --- order to cash ---------------------------------------------------------------------------
@@ -254,6 +313,11 @@ PROJECTORS = {
     "purchasing.goodsreceipt": (goods_receipt, lambda o: ("GoodsReceipt", _doc_key(o, "receipt_number"))),
     "purchasing.supplierinvoice": (supplier_invoice, lambda o: ("SupplierInvoice", _doc_key(o, "invoice_number"))),
     "finance.journalentry": (journal_entry, None),
+    "production.productionarea": (production_area, lambda o: ("Area", _plant_child_key(o))),
+    "production.productionline": (production_line, lambda o: ("Line", _plant_child_key(o))),
+    "production.workcenter": (work_center, lambda o: ("Cell", _plant_child_key(o))),
+    "production.billofmaterials": (bill_of_materials, lambda o: ("BOM", o.key)),
+    "production.routing": (routing, lambda o: ("Routing", o.key)),
 }
 
 

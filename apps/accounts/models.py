@@ -15,6 +15,7 @@ class Role(models.TextChoices):
     INVENTORY_MANAGER = "INVENTORY_MANAGER", "Inventory Manager"
     PURCHASING_OFFICER = "PURCHASING_OFFICER", "Purchasing Officer"
     HR_ADMIN = "HR_ADMIN", "HR Admin"
+    PRODUCTION_PLANNER = "PRODUCTION_PLANNER", "Production Planner"
     VIEWER = "VIEWER", "Viewer"
 
 

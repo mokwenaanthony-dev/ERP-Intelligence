@@ -122,6 +122,55 @@ def document_flow(company_code: str, number: str, allowed: set) -> dict | None:
     return {"start": f"{company_code}/{number.upper()}", "documents": documents}
 
 
+# --- Where used (multi-level BOM) -------------------------------------------------------------
+
+MAX_BOM_LEVELS = 10
+OPEN_ORDER_STATUSES = ["OPEN", "CONFIRMED"]
+
+
+def where_used(material: str, allowed: set) -> dict | None:
+    """Every product that consumes ``material`` through active BOMs, at any depth, and (if the caller
+    may see sales) the open sales orders for those products.
+
+    This is the supply-chain risk question "if this component is short, what can we not make, and
+    whose orders are affected?". The traversal is one level per query, so each step stays a simple,
+    indexed pattern and the depth is bounded.
+    """
+    read = get_store().read
+    found = read("MATCH (m:Material {key: $key}) RETURN m.key AS key, m.description AS description",
+                 {"key": material})
+    if not found:
+        return None
+    used_in, frontier, seen = [], [material], {material}
+    for level in range(1, MAX_BOM_LEVELS + 1):
+        rows = read(
+            "MATCH (b:BOM {status: 'ACTIVE'})-[r:CONSUMES]->(c:Material) WHERE c.key IN $keys "
+            "MATCH (b)-[:FOR]->(p:Material) "
+            "RETURN c.key AS component, p.key AS product, p.description AS description, "
+            "p.material_type AS material_type, b.plant AS plant, b.key AS bom, r.quantity AS quantity "
+            "ORDER BY product, plant",
+            {"keys": frontier})
+        frontier = []
+        for row in rows:
+            used_in.append({"level": level, **row})
+            if row["product"] not in seen:
+                seen.add(row["product"])
+                frontier.append(row["product"])
+        if not frontier:
+            break
+    result = {"material": found[0]["key"], "description": found[0]["description"], "used_in": used_in}
+    if "SalesOrder" in allowed and "BusinessPartner" in allowed:
+        products = sorted({row["product"] for row in used_in} | {material})
+        orders = read(
+            "MATCH (c:BusinessPartner)-[:PLACED]->(so:SalesOrder)-[ci:CONTAINS]->(m:Material) "
+            "WHERE m.key IN $keys AND so.status IN $statuses "
+            "RETURN so.key AS sales_order, so.status AS status, so.date AS date, c.name AS customer, "
+            "m.key AS product, ci.quantity AS quantity ORDER BY sales_order, product",
+            {"keys": products, "statuses": OPEN_ORDER_STATUSES})
+        result["open_sales_orders"] = [dict(row) for row in orders]
+    return result
+
+
 # --- Supplier dependency -----------------------------------------------------------------------
 
 def supplier_dependency(company_code: str, allowed: set) -> list:

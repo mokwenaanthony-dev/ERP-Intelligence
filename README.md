@@ -54,7 +54,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
 | 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware knowledge-graph retrieval (KG-RAG) | Done |
 | 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | Done |
-| 5 | Production planning: ISA-95 equipment hierarchy (areas, lines, work centres) shared by the ERP, the knowledge graph and the future Unified Namespace; bills of materials, routings, production orders | Next |
+| 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | In review |
+| 5b | Production orders: release, goods issue to the order (261), operation confirmations posting activity costs, goods receipt from the order (101), variances | Next |
 | 6 | MES integration: Unified Namespace (MQTT, ISA-95 topic paths from the Wave 5 hierarchy), ERP events published to it, shop-floor events mapped to ERP postings | Planned |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
@@ -245,6 +246,28 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 5a delivers
+
+```
+Company code 1000 (Enterprise) > Plant 1000 (Site) > ASSY (Area) > L1 (Line) > PRESS3, ASSY1 (Cells)
+                                                                          uns_path 1000/1000/assy/l1/press3
+
+FG-4001 Assembled bracket          BOM: 1 x SF-3001 + 4 x RM-2002     Routing: Assemble @ ASSY1 (labour)
+  SF-3001 Pressed frame            BOM: 2.5 kg RM-2001                Routing: Press @ PRESS3 (machine + labour)
+Standard cost of 100 brackets: R22,525.00 (R225.25 each)
+```
+
+| Area | What exists |
+|---|---|
+| ISA-95 equipment hierarchy | Production areas and lines under each plant, work centres at the bottom (SAP's work centre = an ISA-95 work cell). Every level has its ISA-95 level and Unified Namespace topic path; codes are fixed once created because they are graph keys and topic segments ([ADR 0006](docs/decisions/0006-isa-95-equipment-hierarchy-as-shared-vocabulary.md)). `GET /api/production/equipment/?plant=1000` returns the tree |
+| Work centres and costing | Each work centre charges a production cost centre and records allowed activity types (machine hours, labour hours). Activity rates per cost centre and activity type, valid from a date, maintained by the Finance Manager |
+| Bills of materials | Versioned by `valid_from`, never edited (a change is a new version; versions can be deactivated). Only finished and semi-finished products have BOMs; components are stock materials; a BOM that would make a product a component of itself, at any depth, is refused with the loop spelled out. Multi-level explosion: `GET /api/production/boms/explode/?material=FG-4001&plant=1000&quantity=10` |
+| Routings | Versioned operations at active work centres of the plant, each with planned activity: fixed setup plus a quantity per base quantity; only activity types recorded at that work centre |
+| Standard cost estimate | `GET /api/production/cost-estimate/?material=FG-4001&plant=1000&quantity=100`: components at moving average price (or rolled up from their own BOM when not in stock) plus routing activities at cost-centre rates, itemised. Wave 5b compares production orders with it |
+| Knowledge graph (ontology 1.1) | New `Area`, `Line`, `Cell`, `BOM` and `Routing` nodes; `Cell -CHARGED_TO-> CostCenter`. Where-used: `GET /api/graph/where-used/RM-2001/` follows BOMs up any number of levels and lists the open sales orders at risk if the material runs short. All node types are documented in [docs/ONTOLOGY.md](docs/ONTOLOGY.md) |
+| Roles | New **Production Planner** role maintains production master data; cost estimates are limited to planners, finance and the warehouse |
+| Demo | `setup_demo_production` (also run by `seed_data`): the equipment, rates, two-level product and raw-material stock above |
+
 ## What Wave 4b delivers
 
 ```
@@ -306,12 +329,13 @@ Management reports (API): income statement · balance sheet · sales margin · s
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
+| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
 | Inventory Manager | goods movements, goods receipts, delivery reversal, materials | deliveries, purchase orders |
 | Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
+| Production Planner | production areas, lines, work centres, BOMs, routings | cost estimates, all master data |
 | Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices |
 | Administrator / superuser | everything, including organisation structure | - |
 
@@ -347,8 +371,16 @@ Employee records and salaries are visible to HR only.
 | GET | `/api/graph/customer-360/<number>/` | Business partner across modules (roles that see partners and sales orders) |
 | GET | `/api/graph/document-flow/` | `?company_code=&document=SO00000001` (or DL, IN, PO, GR, IV, DZ, KZ numbers) |
 | GET | `/api/graph/supplier-dependency/` | `?company_code=` |
+| GET | `/api/graph/where-used/<material>/` | Products using the material at any BOM level, and open sales orders for them (sales roles) |
 | GET | `/api/graph/context/` | `?label=&key=[&depth=1..3]`: knowledge-graph retrieval (KG-RAG), filtered by role |
 | POST | `/api/graph/rebuild/` | Administrators: rebuild the graph from the ERP tables |
+| CRUD | `/api/production/areas/`, `/lines/`, `/work-centers/` | `?plant=`; codes cannot be changed after creation |
+| CRUD | `/api/production/activity-types/`, `/activity-rates/` | Finance Manager |
+| GET, POST | `/api/production/boms/`, `/routings/` | `?plant=&material=&status=`; created whole, never edited |
+| POST | `/api/production/boms/<id>/status/`, `/routings/<id>/status/` | `{"status": "ACTIVE" \| "INACTIVE"}` |
+| GET | `/api/production/boms/explode/` | `?material=&plant=&quantity=[&date=]`: multi-level explosion |
+| GET | `/api/production/cost-estimate/` | `?material=&plant=&quantity=[&date=]` |
+| GET | `/api/production/equipment/` | `?plant=`: ISA-95 tree with UNS topic paths |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
@@ -498,9 +530,10 @@ apps/
   graph/       Knowledge graph: outbox, projection (ontology), Neo4j store, Cypher queries, role filtering
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
+  production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate; setup_demo_production
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code
-docs/          ARCHITECTURE.md: target architecture and vision; decisions/: architecture decision records
+docs/          ARCHITECTURE.md: architecture and vision; ONTOLOGY.md: the graph's node types; decisions/: ADRs
 tests/         pytest suite
 ```
 

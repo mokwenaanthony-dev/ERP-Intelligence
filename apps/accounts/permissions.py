@@ -17,6 +17,7 @@ Sales Rep          sales (orders, customers)   inventory (catalogue lookup)
 Inventory Manager  inventory, goods receipts   purchase orders
 Purchasing Officer purchasing, goods receipts  inventory, supplier invoices
 HR Admin           hr                          -
+Production Planner production master data     cost estimates, all master data
 Viewer             -                           sales, inventory, purchasing
 =================  ==========================  ===================================
 """
@@ -188,3 +189,22 @@ AnalyticsAdminPermission = RolePermission.build(
 # their role may see (apps/graph/access.py). Rebuilding the graph is for administrators.
 GraphPermission = RolePermission.build("GraphPermission", read_all=True)
 GraphAdminPermission = RolePermission.build("GraphAdminPermission")
+
+# --- Wave 5a -------------------------------------------------------------------
+
+# Production master data (equipment hierarchy, BOMs, routings): the production planner maintains it,
+# everyone can read it (sales and purchasing need to see what goes into a product).
+ProductionPermission = RolePermission.build(
+    "ProductionPermission", write=(Role.PRODUCTION_PLANNER,), read_all=True,
+)
+
+# Activity types and their rates are controlling data: the Finance Manager sets them.
+ActivityRatePermission = RolePermission.build(
+    "ActivityRatePermission", write=(Role.FINANCE_MANAGER,), read_all=True,
+)
+
+# Cost estimates reveal product costs and margins: planners, finance and the warehouse only.
+CostEstimatePermission = RolePermission.build(
+    "CostEstimatePermission",
+    read=(Role.PRODUCTION_PLANNER, Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER),
+)
