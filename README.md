@@ -11,21 +11,22 @@ modular monolith on Django/DRF and PostgreSQL: a Universal Journal that every mo
 immutable documents, and business rules in a service layer. On top of it come two read models: an
 **analytics layer** for totals over time, and a **knowledge graph** that turns the links between
 partners, materials, documents and cost centres into a semantic layer. That graph supports
-Customer 360, document flow, supply-chain risk and GraphRAG for enterprise AI agents. A companion MES
+Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG-RAG) for enterprise AI agents. A companion MES
 project (Rust edge agents, MQTT, Python) will keep shop-floor activity in step with the books through
 the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
 cost and profit centres, and an analytics layer with financial statements and margin analysis. 400+ tests, 99% coverage, CI with linting, security scanning and dependency
 auditing, and a Neo4j knowledge graph fed by a transactional outbox. **Next:** production planning.
-Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design.
+Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
+[architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
 ```mermaid
 flowchart LR
     MES["MES: Rust edge → MQTT → Python<br/>(planned)"] <-->|ISA-95 events| CORE
     CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>Neo4j (built)"]
     CORE --> AN["Analytics layer<br/>(built)"]
-    KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · GraphRAG"]
+    KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · KG-RAG"]
     AN --> BI["BI dashboards"]
 ```
 
@@ -51,10 +52,10 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 3 | HR (org units, positions, employees), South African payroll posting, cost and profit centres | Done |
 | 4a | Analytics layer: reporting views (materialized on PostgreSQL), income statement, balance sheet, margin analysis, stock ageing, payroll cost trend | Done |
 | 4a+ | BI dashboards (Metabase) on the reporting views, built as code; demo activity generator; read-only reporting role | Done |
-| 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware GraphRAG retrieval | Done |
-| 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | In review |
-| 5 | Production planning: bills of materials, routings, production orders | Planned |
-| 6 | MES integration: MQTT / Unified Namespace bridge mapped to ERP postings (ISA-95) | Planned |
+| 4b | Knowledge graph (Neo4j): transactional outbox, graph projection, Customer 360, document flow, supplier dependency, permission-aware knowledge-graph retrieval (KG-RAG) | Done |
+| 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | Done |
+| 5 | Production planning: ISA-95 equipment hierarchy (areas, lines, work centres) shared by the ERP, the knowledge graph and the future Unified Namespace; bills of materials, routings, production orders | Next |
+| 6 | MES integration: Unified Namespace (MQTT, ISA-95 topic paths from the Wave 5 hierarchy), ERP events published to it, shop-floor events mapped to ERP postings | Planned |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
@@ -252,7 +253,7 @@ Business service (post invoice, receive goods, ...)
    v
 OutboxEvent  --(Celery beat, every 10 s)-->  projector: current state -> idempotent MERGEs  -->  Neo4j
                                                                                                   |
-        Customer 360 · document flow · supplier dependency · GraphRAG context  <-- Cypher ---------+
+        Customer 360 · document flow · supplier dependency · KG-RAG context    <-- Cypher ---------+
 ```
 
 | Area | What exists |
@@ -263,7 +264,7 @@ OutboxEvent  --(Celery beat, every 10 s)-->  projector: current state -> idempot
 | Customer 360 | `GET /api/graph/customer-360/<number>/`: roles, orders by status, billed / paid / open / overdue, top materials, supplier activity, recent documents across modules |
 | Document flow | `GET /api/graph/document-flow/?company_code=1000&document=SO00000001`: everything upstream and downstream of any SO, DL, IN, PO, GR, IV, DZ or KZ document (SAP's document flow as a graph traversal) |
 | Supplier dependency | `GET /api/graph/supplier-dependency/?company_code=1000`: materials per supplier count, single-source flags, and which customers' sales depend on them |
-| GraphRAG retrieval | `GET /api/graph/context/?label=SalesOrder&key=1000/SO00000001&depth=2`: the entity's neighbourhood as grounded facts (subject, predicate, object, properties, text) for an AI agent |
+| KG-RAG retrieval | `GET /api/graph/context/?label=SalesOrder&key=1000/SO00000001&depth=2`: the entity's neighbourhood as grounded facts (subject, predicate, object, properties, text) for an AI agent |
 | Security | Each role sees only certain node types (e.g. employees only for HR); every node on every returned path must be visible to the caller, so an agent acting for a sales rep cannot reach HR data. Labels, types and property names are validated before they reach Cypher; all values are parameters |
 | Stack | Neo4j 5.26 LTS Community (rolling `5.26-community` tag) in Docker Compose (Browser on http://localhost:7474); CI runs the graph tests against a Neo4j service container |
 
@@ -346,7 +347,7 @@ Employee records and salaries are visible to HR only.
 | GET | `/api/graph/customer-360/<number>/` | Business partner across modules (roles that see partners and sales orders) |
 | GET | `/api/graph/document-flow/` | `?company_code=&document=SO00000001` (or DL, IN, PO, GR, IV, DZ, KZ numbers) |
 | GET | `/api/graph/supplier-dependency/` | `?company_code=` |
-| GET | `/api/graph/context/` | `?label=&key=[&depth=1..3]`: GraphRAG retrieval, filtered by role |
+| GET | `/api/graph/context/` | `?label=&key=[&depth=1..3]`: knowledge-graph retrieval (KG-RAG), filtered by role |
 | POST | `/api/graph/rebuild/` | Administrators: rebuild the graph from the ERP tables |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
@@ -499,7 +500,7 @@ apps/
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code
-docs/          ARCHITECTURE.md: target architecture and vision
+docs/          ARCHITECTURE.md: target architecture and vision; decisions/: architecture decision records
 tests/         pytest suite
 ```
 

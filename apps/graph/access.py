@@ -1,6 +1,6 @@
 """Which node types each role may see in the graph: the API's role rules, carried over.
 
-Every graph query is filtered to these labels, including the GraphRAG context an AI agent receives,
+Every graph query is filtered to these labels, including the KG-RAG context an AI agent receives,
 so an agent acting for a user can never see more than that user could through the API.
 """
 from apps.accounts.models import Role
