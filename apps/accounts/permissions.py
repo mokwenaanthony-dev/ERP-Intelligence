@@ -208,3 +208,23 @@ CostEstimatePermission = RolePermission.build(
     "CostEstimatePermission",
     read=(Role.PRODUCTION_PLANNER, Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER),
 )
+
+# --- Wave 5b -------------------------------------------------------------------
+
+# Production orders: the planner creates, releases, confirms and completes them; finance, the
+# warehouse and viewers can follow them.
+ProductionOrderPermission = RolePermission.build(
+    "ProductionOrderPermission",
+    write=(Role.PRODUCTION_PLANNER,),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER, Role.VIEWER),
+)
+
+# Issuing components to an order and receiving its output are warehouse work as well.
+OrderGoodsMovementPermission = RolePermission.build(
+    "OrderGoodsMovementPermission", write=(Role.PRODUCTION_PLANNER, Role.INVENTORY_MANAGER),
+)
+
+# Completing an order settles its variance to the income statement: planner or Finance Manager.
+OrderSettlementPermission = RolePermission.build(
+    "OrderSettlementPermission", write=(Role.PRODUCTION_PLANNER, Role.FINANCE_MANAGER),
+)

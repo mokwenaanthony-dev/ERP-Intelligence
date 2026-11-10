@@ -214,3 +214,24 @@ def test_where_used_across_bom_levels_and_open_orders(graph, make_user, client_f
     cell = get_store().read("MATCH (c:Cell {key: '1000/PRESS3'})-[:PART_OF*3]->(p:Plant) "
                             "RETURN c.uns_path AS path, p.key AS plant")
     assert cell == [{"path": "1000/1000/assy/l1/press3", "plant": "1000"}]
+
+
+def test_where_used_shows_open_production_orders(graph, make_user):
+    """A planned frame order needs steel sheet: where-used warns the planner before the shortage bites."""
+    from datetime import date
+
+    from apps.masterdata.models import Material
+    from apps.organization.models import Plant
+    from apps.production import orders
+
+    call_command("setup_demo_production", stdout=StringIO())
+    order = orders.create_order(plant=Plant.objects.get(code="1000"), material=Material.objects.get(number="SF-3001"),
+                                quantity=Decimal("40"), start_date=date(2026, 6, 1))
+    orders.release_order(order, date(2026, 6, 1))
+    assert processor.process_outbox(limit=100000, store=get_store())["failed"] == 0
+
+    result = queries.where_used("RM-2001", labels_for(make_user, Role.PRODUCTION_PLANNER))
+    [planned] = result["open_production_orders"]
+    assert (planned["production_order"], planned["status"], planned["product"], planned["quantity"]) == (
+        f"1000/{order.order_number}", "RELEASED", "SF-3001", 100.0)  # 40 frames x 2.5 kg
+    assert "open_production_orders" not in queries.where_used("RM-2001", labels_for(make_user, Role.SALES_REP))

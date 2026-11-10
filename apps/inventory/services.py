@@ -23,6 +23,7 @@ from apps.organization.models import Plant, StorageLocation
 
 from .models import (
     OFFSET_ACCOUNT,
+    ORDER_RECEIPT_OFFSET,
     PRICED_RECEIPTS,
     RECEIPTS,
     AccountKey,
@@ -45,6 +46,7 @@ JOURNAL_DOCUMENT_TYPE = {
     MovementType.SCRAPPING: DocumentType.GOODS_ISSUE,
     MovementType.INVENTORY_GAIN: DocumentType.INVENTORY_ADJUSTMENT,
     MovementType.INVENTORY_LOSS: DocumentType.INVENTORY_ADJUSTMENT,
+    MovementType.GOODS_ISSUE_ORDER: DocumentType.GOODS_ISSUE,
 }
 
 
@@ -130,9 +132,14 @@ def account_for(company_code, key: str, material_type: str) -> GLAccount:
 
 # --- Posting -------------------------------------------------------------------------
 
-def _validate(movement_type, plant, items):
+def _validate(movement_type, plant, items, order_number=""):
     if movement_type not in MovementType.values:
         raise StockError(f"Unknown movement type {movement_type}.")
+    # Production orders (Wave 5b): 261 issues to an order, 101 can also receive from one.
+    if movement_type == MovementType.GOODS_ISSUE_ORDER and not order_number:
+        raise StockError("A goods issue to a production order (261) needs the order number.")
+    if order_number and movement_type not in (MovementType.GOODS_ISSUE_ORDER, MovementType.GOODS_RECEIPT):
+        raise StockError(f"Movement {movement_type} cannot refer to a production order.")
     if not items:
         raise StockError("A goods movement needs at least one item.")
     for item in items:
@@ -231,9 +238,15 @@ def _stock_effects(movement_type, plant, items):
     return effects
 
 
-def _journal_lines(company_code, movement_type, plant, effects, business_partner):
-    """Inventory line and offset line per material, values in company currency."""
+def _journal_lines(company_code, movement_type, plant, effects, business_partner, order_number=""):
+    """Inventory line and offset line per material, values in company currency.
+
+    With a production order, the offset line is charged to the order (its cost object): consumption
+    for a 261, factory output for a 101 receipt from the order.
+    """
     offset_key = OFFSET_ACCOUNT[movement_type]
+    if order_number and movement_type == MovementType.GOODS_RECEIPT:
+        offset_key = ORDER_RECEIPT_OFFSET
     lines = []
     for item, _location, _quantity, value in effects:
         if value == 0:
@@ -247,17 +260,17 @@ def _journal_lines(company_code, movement_type, plant, effects, business_partner
         text = f"{movement_type} {material.number} x {abs(item.quantity)}"
         lines.append(LineInput(inventory, side, abs(value), material=material, plant=plant, text=text))
         lines.append(LineInput(offset, opposite, abs(value), material=material, plant=plant,
-                               business_partner=business_partner, text=text))
+                               business_partner=business_partner, text=text, order_number=order_number))
     return lines
 
 
 @transaction.atomic
 def post_goods_movement(*, movement_type: str, plant: Plant, posting_date: date, items: list[ItemInput],
                         document_date: date | None = None, reference: str = "", header_text: str = "",
-                        business_partner=None, user=None) -> MaterialDocument:
+                        business_partner=None, order_number: str = "", user=None) -> MaterialDocument:
     """Post a goods movement and, if it changes stock value, its journal entry. All or nothing."""
     company_code = plant.company_code
-    _validate(movement_type, plant, items)
+    _validate(movement_type, plant, items, order_number)
     period = finance.find_period(company_code, posting_date)
     if not period.is_open:
         raise StockError(f"Posting period {period} is closed.")
@@ -266,7 +279,7 @@ def post_goods_movement(*, movement_type: str, plant: Plant, posting_date: date,
     effects = _stock_effects(movement_type, plant, items)
 
     journal_entry = None
-    lines = _journal_lines(company_code, movement_type, plant, effects, business_partner) \
+    lines = _journal_lines(company_code, movement_type, plant, effects, business_partner, order_number) \
         if movement_type != MovementType.TRANSFER else []
     if lines:
         journal_entry = finance.post_journal_entry(
@@ -281,7 +294,7 @@ def post_goods_movement(*, movement_type: str, plant: Plant, posting_date: date,
         document_number=finance.next_document_number(company_code, fiscal_year, "MD"),
         movement_type=movement_type, posting_date=posting_date, document_date=document_date or posting_date,
         reference=reference, header_text=header_text, business_partner=business_partner,
-        journal_entry=journal_entry, created_by=user, updated_by=user,
+        order_number=order_number, journal_entry=journal_entry, created_by=user, updated_by=user,
     )
     MaterialDocumentItem.objects.bulk_create([
         MaterialDocumentItem(
@@ -350,7 +363,8 @@ def reverse_material_document(document: MaterialDocument, *, posting_date: date 
         document_number=finance.next_document_number(company_code, fiscal_year, "MD"),
         movement_type=document.movement_type, posting_date=posting_date, document_date=posting_date,
         reference=document.reference, header_text=f"Reversal of {document.document_number}"[:100],
-        business_partner=document.business_partner, journal_entry=journal_entry, reversal_of=document,
+        business_partner=document.business_partner, order_number=document.order_number,
+        journal_entry=journal_entry, reversal_of=document,
         created_by=user, updated_by=user,
     )
     MaterialDocumentItem.objects.bulk_create([

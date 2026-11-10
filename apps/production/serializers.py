@@ -13,13 +13,15 @@ from apps.finance.models import GLAccount
 from apps.masterdata.models import Material, UnitOfMeasure
 from apps.organization.models import CompanyCode, Plant
 
-from . import services
+from . import orders, services
 from .models import (
     ActivityRate,
     ActivityType,
     BillOfMaterials,
+    Confirmation,
     ProductionArea,
     ProductionLine,
+    ProductionOrder,
     Routing,
     WorkCenter,
 )
@@ -322,3 +324,155 @@ class RoutingSerializer(serializers.ModelSerializer):
 
 class StatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=BillOfMaterials.Status.choices)
+
+
+# --- Wave 5b: production orders ----------------------------------------------------------------
+# Order actions raise rule errors in ``post()``, never in ``validate()``, so the logged cause keeps
+# the file and line of the rule (see _RuleCheckedMixin).
+
+class ProductionOrderCreateSerializer(serializers.Serializer):
+    material = serializers.SlugRelatedField(slug_field="number", queryset=Material.objects.all())
+    plant = serializers.SlugRelatedField(slug_field="code", queryset=Plant.objects.select_related("company_code"))
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=3, min_value=Decimal("0.001"))
+    start_date = serializers.DateField()
+    finish_date = serializers.DateField(required=False, allow_null=True)
+    receipt_storage_location = serializers.CharField(max_length=4, required=False)
+
+    def post(self, user):
+        data = self.validated_data
+        location = None
+        if data.get("receipt_storage_location"):
+            location = data["plant"].storage_locations.filter(code=data["receipt_storage_location"]).first()
+            if location is None:
+                raise serializers.ValidationError({"receipt_storage_location": "Not found in this plant."})
+        try:
+            return orders.create_order(plant=data["plant"], material=data["material"], quantity=data["quantity"],
+                                       start_date=data["start_date"], finish_date=data.get("finish_date"),
+                                       receipt_storage_location=location, user=user)
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+
+
+class ProductionOrderSerializer(serializers.ModelSerializer):
+    company_code = serializers.CharField(source="company_code.code")
+    plant = serializers.CharField(source="plant.code")
+    material = serializers.CharField(source="material.number")
+    unit = serializers.CharField(source="unit.code")
+    receipt_storage_location = serializers.CharField(source="receipt_storage_location.code")
+    bom = serializers.CharField(source="bom.key")
+    routing = serializers.CharField(source="routing.key", default=None)
+    delivered_quantity = serializers.SerializerMethodField()
+    settlement_document = serializers.CharField(source="settlement_entry.document_number", default=None)
+    components = serializers.SerializerMethodField()
+    operations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionOrder
+        fields = ["id", "company_code", "plant", "order_number", "material", "quantity", "unit",
+                  "delivered_quantity", "receipt_storage_location", "start_date", "finish_date", "status",
+                  "released_at", "completed_at", "bom", "routing", "planned_cost", "planned_unit_cost",
+                  "settlement_document", "components", "operations", *AUDIT_FIELDS]
+        read_only_fields = fields
+
+    def get_delivered_quantity(self, order):
+        return str(orders.delivered_quantity(order))
+
+    def get_components(self, order):
+        issued = orders.issued_quantities(order)
+        return [{"item_number": c.item_number, "material": c.material.number,
+                 "required_quantity": str(c.required_quantity),
+                 "issued_quantity": str(issued.get(c.material_id, Decimal("0.000"))),
+                 "storage_location": c.storage_location.code, "planned_value": str(c.planned_value)}
+                for c in order.components.all()]
+
+    def get_operations(self, order):
+        return [{
+            "operation_number": op.operation_number, "description": op.description,
+            "work_center": op.work_center.code, "uns_path": op.work_center.uns_path,
+            "finally_confirmed": any(c.is_final for c in op.confirmations.all()),
+            "activities": [{"activity_type": a.activity_type.code, "planned_quantity": str(a.planned_quantity),
+                            "planned_value": str(a.planned_value)} for a in op.activities.all()],
+        } for op in order.operations.all()]
+
+
+class PostingDateSerializer(serializers.Serializer):
+    posting_date = serializers.DateField()
+
+
+class IssueItemSerializer(serializers.Serializer):
+    material = serializers.SlugRelatedField(slug_field="number", queryset=Material.objects.all())
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=3, min_value=Decimal("0.001"))
+    storage_location = serializers.CharField(max_length=4, required=False)
+
+
+class IssueSerializer(PostingDateSerializer):
+    items = IssueItemSerializer(many=True, required=False)
+
+    def post(self, order, user):
+        data = self.validated_data
+        items = None
+        if data.get("items"):
+            items = []
+            for raw in data["items"]:
+                location = None
+                if raw.get("storage_location"):
+                    location = order.plant.storage_locations.filter(code=raw["storage_location"]).first()
+                    if location is None:
+                        raise serializers.ValidationError({"items": f"Storage location {raw['storage_location']} "
+                                                                    "not found in this plant."})
+                items.append(orders.IssueInput(raw["material"], raw["quantity"], location))
+        try:
+            return orders.issue_components(order, data["posting_date"], items, user=user)
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+
+
+class ReceiveSerializer(PostingDateSerializer):
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=3, min_value=Decimal("0.001"))
+
+    def post(self, order, user):
+        try:
+            return orders.receive_output(order, self.validated_data["posting_date"],
+                                         self.validated_data["quantity"], user=user)
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+
+
+class ConfirmSerializer(PostingDateSerializer):
+    operation_number = serializers.IntegerField(min_value=1)
+    yield_quantity = serializers.DecimalField(max_digits=15, decimal_places=3, default=Decimal("0"))
+    scrap_quantity = serializers.DecimalField(max_digits=15, decimal_places=3, default=Decimal("0"))
+    activities = serializers.DictField(child=serializers.DecimalField(max_digits=12, decimal_places=3),
+                                       required=False, help_text='e.g. {"MACH": "10.5", "LAB": "10"}')
+    final = serializers.BooleanField(default=False)
+    external_id = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+
+    def post(self, order, user):
+        data = self.validated_data
+        try:
+            return orders.confirm_operation(
+                order, data["operation_number"], data["posting_date"], yield_quantity=data["yield_quantity"],
+                scrap_quantity=data["scrap_quantity"], activities=data.get("activities"), final=data["final"],
+                external_id=data["external_id"], user=user,
+            )
+        except services.ProductionError as exc:
+            raise rule_error(exc) from exc
+
+
+class ConfirmationSerializer(serializers.ModelSerializer):
+    order = serializers.CharField(source="order.order_number")
+    operation_number = serializers.IntegerField(source="operation.operation_number")
+    work_center = serializers.CharField(source="operation.work_center.code")
+    journal_entry = serializers.CharField(source="journal_entry.document_number", default=None)
+    activities = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Confirmation
+        fields = ["id", "order", "confirmation_number", "operation_number", "work_center", "posting_date",
+                  "yield_quantity", "scrap_quantity", "is_final", "external_id", "journal_entry", "activities",
+                  *AUDIT_FIELDS]
+        read_only_fields = fields
+
+    def get_activities(self, confirmation):
+        return [{"activity_type": a.activity_type.code, "quantity": str(a.quantity), "rate": str(a.rate),
+                 "amount": str(a.amount)} for a in confirmation.activities.all()]

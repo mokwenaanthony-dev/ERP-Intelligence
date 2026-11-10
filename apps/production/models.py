@@ -14,6 +14,10 @@ they are graph keys and UNS topic segments (``uns_path``), so renaming one would
 Costing: an ``ActivityType`` (machine hours, labour hours) is recorded at work centres and valued at
 the ``ActivityRate`` of the work centre's cost centre.
 
+Orders (Wave 5b): a ``ProductionOrder`` copies the BOM and routing valid on its start date, and
+``Confirmation`` records the work reported against its operations. Their costs are journal lines that
+carry the order number, so the order is a cost object of the Universal Journal like a cost centre.
+
 Recipes: a ``BillOfMaterials`` lists the components of a material in a plant; a ``Routing`` lists the
 operations, each at a work centre with its activity quantities. Both are versioned by ``valid_from``
 and never edited after creation: a change is a new version, and an old one can be deactivated.
@@ -286,3 +290,149 @@ class OperationActivity(models.Model):
 
     def __str__(self):
         return f"{self.operation}: {self.activity_type.code}"
+
+
+# --- Wave 5b: production orders --------------------------------------------------------------
+
+class ProductionOrder(AuditedModel):
+    """An order to make a quantity of a material in a plant (SAP CO01), the ISA-95 operations request.
+
+    On creation it copies the BOM components and routing operations valid on the start date, and
+    records the planned cost from the standard cost estimate. Its actual costs are journal lines
+    carrying its ``order_number``: components issued (261), activities confirmed, and a credit for the
+    finished goods received (101). Completing the order settles what is left to production variances.
+
+    Status: CREATED -> RELEASED -> COMPLETED (settled), or CANCELLED before anything was posted.
+    """
+
+    class Status(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        RELEASED = "RELEASED", "Released"
+        COMPLETED = "COMPLETED", "Completed and settled"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    company_code = models.ForeignKey("organization.CompanyCode", on_delete=models.PROTECT, related_name="+")
+    plant = models.ForeignKey("organization.Plant", on_delete=models.PROTECT, related_name="production_orders")
+    order_number = models.CharField(max_length=20)
+    material = models.ForeignKey("masterdata.Material", on_delete=models.PROTECT, related_name="production_orders")
+    quantity = models.DecimalField(max_digits=15, decimal_places=3, validators=POSITIVE)
+    unit = models.ForeignKey("masterdata.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    receipt_storage_location = models.ForeignKey("organization.StorageLocation", on_delete=models.PROTECT,
+                                                 related_name="+", help_text="Where the finished goods go.")
+    start_date = models.DateField()
+    finish_date = models.DateField()
+    bom = models.ForeignKey(BillOfMaterials, on_delete=models.PROTECT, related_name="orders")
+    routing = models.ForeignKey(Routing, on_delete=models.PROTECT, null=True, blank=True, related_name="orders")
+    planned_cost = models.DecimalField(max_digits=18, decimal_places=2,
+                                       help_text="Standard cost estimate for the order quantity, at creation.")
+    planned_unit_cost = models.DecimalField(max_digits=18, decimal_places=4,
+                                            help_text="Value per unit of finished goods received from the order.")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.CREATED)
+    released_at = models.DateField(null=True, blank=True)
+    completed_at = models.DateField(null=True, blank=True)
+    settlement_entry = models.OneToOneField("finance.JournalEntry", on_delete=models.PROTECT, null=True,
+                                            blank=True, related_name="settled_order")
+
+    class Meta:
+        ordering = ["company_code__code", "-order_number"]
+        constraints = [
+            models.UniqueConstraint(fields=["company_code", "order_number"], name="unique_production_order_number"),
+        ]
+
+    def __str__(self):
+        return f"{self.order_number} {self.quantity} x {self.material.number}"
+
+
+class OrderComponent(models.Model):
+    """A component the order needs, copied from the BOM and scaled to the order quantity."""
+
+    order = models.ForeignKey(ProductionOrder, on_delete=models.CASCADE, related_name="components")
+    item_number = models.PositiveIntegerField()
+    material = models.ForeignKey("masterdata.Material", on_delete=models.PROTECT, related_name="+")
+    required_quantity = models.DecimalField(max_digits=15, decimal_places=3)
+    planned_value = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"),
+                                        help_text="From the cost estimate at creation.")
+    storage_location = models.ForeignKey("organization.StorageLocation", on_delete=models.PROTECT, related_name="+",
+                                         help_text="Default storage location to issue from.")
+
+    class Meta:
+        ordering = ["order", "item_number"]
+        constraints = [models.UniqueConstraint(fields=["order", "item_number"], name="unique_order_component")]
+
+    def __str__(self):
+        return f"{self.order.order_number}/{self.item_number}: {self.required_quantity} x {self.material.number}"
+
+
+class OrderOperation(models.Model):
+    """An operation the order must go through, copied from the routing."""
+
+    order = models.ForeignKey(ProductionOrder, on_delete=models.CASCADE, related_name="operations")
+    operation_number = models.PositiveIntegerField()
+    description = models.CharField(max_length=100)
+    work_center = models.ForeignKey(WorkCenter, on_delete=models.PROTECT, related_name="order_operations")
+
+    class Meta:
+        ordering = ["order", "operation_number"]
+        constraints = [models.UniqueConstraint(fields=["order", "operation_number"], name="unique_order_operation")]
+
+    def __str__(self):
+        return f"{self.order.order_number}/{self.operation_number:04d} at {self.work_center.code}"
+
+
+class OrderOperationActivity(models.Model):
+    """Planned activity of an order operation for the whole order quantity (setup included)."""
+
+    operation = models.ForeignKey(OrderOperation, on_delete=models.CASCADE, related_name="activities")
+    activity_type = models.ForeignKey(ActivityType, on_delete=models.PROTECT, related_name="+")
+    planned_quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    planned_value = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
+
+    class Meta:
+        ordering = ["operation", "activity_type__code"]
+        constraints = [
+            models.UniqueConstraint(fields=["operation", "activity_type"], name="unique_order_operation_activity"),
+        ]
+
+
+class Confirmation(AuditedModel):
+    """Work reported against an operation (SAP CO11N), the ISA-95 operations response.
+
+    Its activities are charged to the order at the work centre's cost-centre rates in one journal
+    entry (document type PC). Wave 6's MES sends these from the shop floor.
+    """
+
+    order = models.ForeignKey(ProductionOrder, on_delete=models.PROTECT, related_name="confirmations")
+    operation = models.ForeignKey(OrderOperation, on_delete=models.PROTECT, related_name="confirmations")
+    confirmation_number = models.CharField(max_length=20)
+    posting_date = models.DateField()
+    yield_quantity = models.DecimalField(max_digits=15, decimal_places=3, default=Decimal("0"))
+    scrap_quantity = models.DecimalField(max_digits=15, decimal_places=3, default=Decimal("0"))
+    is_final = models.BooleanField(default=False, help_text="No more work expected on this operation.")
+    journal_entry = models.OneToOneField("finance.JournalEntry", on_delete=models.PROTECT, null=True, blank=True,
+                                         related_name="production_confirmation")
+    external_id = models.CharField(max_length=64, blank=True, default="",
+                                   help_text="ID from the sending system (e.g. the MES event ID); repeats are refused.")
+
+    class Meta:
+        ordering = ["order", "confirmation_number"]
+        constraints = [
+            models.UniqueConstraint(fields=["order", "confirmation_number"], name="unique_confirmation_number"),
+            models.UniqueConstraint(fields=["order", "external_id"], condition=~models.Q(external_id=""),
+                                    name="unique_confirmation_external_id"),
+        ]
+
+    def __str__(self):
+        return f"{self.order.order_number} confirmation {self.confirmation_number}"
+
+
+class ConfirmationActivity(models.Model):
+    """Activity reported in a confirmation and what it cost at the rate on the posting date."""
+
+    confirmation = models.ForeignKey(Confirmation, on_delete=models.CASCADE, related_name="activities")
+    activity_type = models.ForeignKey(ActivityType, on_delete=models.PROTECT, related_name="+")
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    rate = models.DecimalField(max_digits=15, decimal_places=2)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        ordering = ["confirmation", "activity_type__code"]

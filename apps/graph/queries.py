@@ -129,8 +129,9 @@ OPEN_ORDER_STATUSES = ["OPEN", "CONFIRMED"]
 
 
 def where_used(material: str, allowed: set) -> dict | None:
-    """Every product that consumes ``material`` through active BOMs, at any depth, and (if the caller
-    may see sales) the open sales orders for those products.
+    """Every product that consumes ``material`` through active BOMs, at any depth; the open sales orders
+    for those products (if the caller may see sales); and the open production orders that need the
+    material or one of those products (if the caller may see production orders).
 
     This is the supply-chain risk question "if this component is short, what can we not make, and
     whose orders are affected?". The traversal is one level per query, so each step stays a simple,
@@ -168,6 +169,17 @@ def where_used(material: str, allowed: set) -> dict | None:
             "m.key AS product, ci.quantity AS quantity ORDER BY sales_order, product",
             {"keys": products, "statuses": OPEN_ORDER_STATUSES})
         result["open_sales_orders"] = [dict(row) for row in orders]
+    if "ProductionOrder" in allowed:
+        # Orders already planned or running that need the material, or a product made from it.
+        components = sorted({row["component"] for row in used_in} | {material})
+        planned = read(
+            "MATCH (po:ProductionOrder)-[c:CONSUMES]->(m:Material) "
+            "WHERE m.key IN $keys AND po.status IN ['CREATED', 'RELEASED'] "
+            "MATCH (po)-[:PRODUCES]->(p:Material) "
+            "RETURN po.key AS production_order, po.status AS status, po.start_date AS start_date, "
+            "p.key AS product, m.key AS component, c.quantity AS quantity ORDER BY production_order, component",
+            {"keys": components})
+        result["open_production_orders"] = [dict(row) for row in planned]
     return result
 
 

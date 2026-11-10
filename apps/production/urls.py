@@ -16,6 +16,7 @@ router.register("activity-types", views.ActivityTypeViewSet, basename="activity-
 router.register("activity-rates", views.ActivityRateViewSet, basename="activity-rate")
 router.register("boms", views.BOMViewSet, basename="bom")
 router.register("routings", views.RoutingViewSet, basename="routing")
+router.register("orders", views.ProductionOrderViewSet, basename="production-order")
 
 urlpatterns = [
     path("equipment/", views.EquipmentView.as_view(), name="equipment"),

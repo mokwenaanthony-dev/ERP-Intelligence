@@ -1,6 +1,7 @@
 # Knowledge graph ontology
 
-**Version 1.1** (Wave 5a: equipment hierarchy, BOMs, routings). Version 1.0 was Wave 4b.
+**Version 1.2** (Wave 5b: production orders). 1.1 added the equipment hierarchy, BOMs and routings
+(Wave 5a); 1.0 was Wave 4b.
 
 This document defines what every node type and relationship in the knowledge graph means, how it is
 keyed and which ERP data it comes from. It is the contract for anyone who queries the graph: people,
@@ -112,6 +113,7 @@ because accounting numbers restart each year.
 | `GoodsReceipt` | number, date, status, delivery_note | `purchasing.GoodsReceipt` |
 | `SupplierInvoice` | number, supplier_reference, date, due_date, gross_amount, status | `purchasing.SupplierInvoice` |
 | `Payment` | number, date, status, direction (INCOMING/OUTGOING), reference, amount | DZ / KZ `finance.JournalEntry` |
+| `ProductionOrder` | number, status, quantity, start_date, finish_date, planned_cost | `production.ProductionOrder` (new in 1.2) |
 
 | Relationship | Properties | Meaning |
 |---|---|---|
@@ -125,6 +127,10 @@ because accounting numbers restart each year.
 | `(PurchaseOrder)-[:BILLED_BY]->(SupplierInvoice)`, `(SupplierInvoice)-[:BILLED_BY_SUPPLIER]->(BusinessPartner)` | | |
 | `(BusinessPartner)-[:PAID]->(Payment)`, `(Payment)-[:PAID_TO]->(BusinessPartner)` | | Incoming / outgoing |
 | `(Invoice\|SupplierInvoice)-[:PAID_BY]->(Payment)` | amount | Open items the payment cleared |
+| `(ProductionOrder)-[:PRODUCES]->(Material)` | | The product the order makes (new in 1.2) |
+| `(ProductionOrder)-[:MADE_AT]->(Plant)` | | |
+| `(ProductionOrder)-[:CONSUMES]->(Material)` | item_number, quantity | A component, quantity for the whole order |
+| `(ProductionOrder)-[:HAS_OPERATION]->(Cell)` | operation_number, description | Where each operation runs |
 
 ## Queries built on this ontology
 
@@ -133,5 +139,5 @@ because accounting numbers restart each year.
 | `/api/graph/customer-360/<number>/` | Everything about a business partner |
 | `/api/graph/document-flow/` | Order → delivery → invoice → payment (and the purchasing chain) |
 | `/api/graph/supplier-dependency/` | Single-source materials and the customers that depend on them |
-| `/api/graph/where-used/<material>/` | Products that use a material at any BOM level, and their open sales orders (new in 1.1) |
+| `/api/graph/where-used/<material>/` | Products that use a material at any BOM level, their open sales orders, and open production orders that need it (1.1, orders in 1.2) |
 | `/api/graph/context/` | KG-RAG: a node's neighbourhood as grounded facts for an AI agent |
