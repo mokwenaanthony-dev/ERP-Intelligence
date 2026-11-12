@@ -14,7 +14,7 @@ are ordered the way they are.
 flowchart TB
     subgraph Floor["Shop floor (separate MES project) 🗺️"]
         PLC["Machines / PLCs"] --> EDGE["Rust edge agents"]
-        EDGE -- "MQTT" --> UNS[("Unified Namespace 🗺️<br/>MQTT broker, ISA-95 topic paths")]
+        EDGE -- "MQTT" --> UNS[("Unified Namespace 🔜<br/>Mosquitto, ISA-95 topic paths")]
         MES["Python MES"] <--> UNS
     end
 
@@ -29,7 +29,7 @@ flowchart TB
     end
 
     UNS -- "confirmations, goods movements, scrap, machine hours" --> PP
-    OUT -- "production orders, BOMs, routings (Wave 6)" --> UNS
+    OUT -- "equipment, operation requests (6a ✅)" --> UNS
     KG -. "same hierarchy and keys as the topic paths" .- UNS
 
     OUT --> PROJ["Projector worker (Celery) ✅"]
@@ -228,7 +228,8 @@ Design rules:
 | 4c ✅ | Troubleshooting logs (request IDs, error locations, business events) and code documentation | Needed before the shop floor adds a second source of events |
 | 5a ✅ | Production master data: ISA-95 equipment hierarchy (areas, lines, cells) in the ERP and the graph, ontology document, activity rates, bills of materials, routings, cost estimate, where-used | The hierarchy is the vocabulary the UNS and the graph share |
 | 5b ✅ | Production orders: goods issue to order (261), confirmations with activity costs, receipt from order (101), settlement of variances; exact decimals in the API | Orders are what the MES runs; confirmations are what it reports |
-| 6 🗺️ | MES integration: Unified Namespace (MQTT broker), ERP outbox published to the UNS, MES events mapped to ERP postings, live state on the graph's equipment nodes | Needs the hierarchy and production orders |
+| 6a ✅ | UNS bridge, ERP side: outbox published to MQTT (equipment, operation requests), MES operation-performance events posted as idempotent confirmations ([contract v1](UNS_CONTRACT.md)) | Needs the hierarchy and production orders |
+| 6b 🔜 | MES-Intelligence (own repository): Python MES, simulator, Mosquitto; then the Rust edge agent and live cell state on the graph | Builds against the contract |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |

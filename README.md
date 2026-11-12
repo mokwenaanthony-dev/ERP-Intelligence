@@ -56,8 +56,9 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 4c | Troubleshooting logs (request IDs, file:line of every rejected rule, business events, error log with tracebacks) and docstrings in every module | Done |
 | 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | Done |
 | 5b | Production orders: release, goods issue to the order (261), confirmations charging machine and labour hours, goods receipt from the order (101), settlement of variances, planned-against-actual costs; exact decimals in every API response | Done |
-| 5c | Idempotency everywhere: a required `Idempotency-Key` on every request that changes data (the first answer is replayed on retry, nothing posts twice); MES events replay their first confirmation | In review |
-| 6 | MES integration: Unified Namespace (MQTT, ISA-95 topic paths from the Wave 5 hierarchy), ERP events published to it, shop-floor events mapped to ERP postings | Planned |
+| 5c | Idempotency everywhere: a required `Idempotency-Key` on every request that changes data (the first answer is replayed on retry, nothing posts twice); MES events replay their first confirmation | Done |
+| 6a | Unified Namespace bridge (ERP side): publishes equipment and released orders' operation requests to MQTT from the outbox; receives MES operation-performance events as idempotent confirmations and answers each one ([contract v1](docs/UNS_CONTRACT.md)) | In review |
+| 6b | MES-Intelligence (own repository): Python MES, machine simulator, Mosquitto broker; Rust edge agent next | Next |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
@@ -246,6 +247,25 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 6a delivers
+
+```
+ERP (this repository)                         MQTT broker (Mosquitto)                MES-Intelligence
+outbox --> uns.publish_outbox (every 5 s) --> .../press3/definition/equipment  -->  knows the cell
+                                         --> .../press3/schedule/operation-requests/mo00000001-0010
+uns_listen <-- .../press3/events/operation-performance <------------------------- work done
+    | confirm_operation(external_id = event ID)
+    +--> 1000/1000/erp/events/confirmation-result (POSTED / REJECTED) -----------> stops resending
+```
+
+| Area | What exists |
+|---|---|
+| Contract | [`docs/UNS_CONTRACT.md`](docs/UNS_CONTRACT.md) version 1, the only thing the ERP and the MES share ([ADR 0009](docs/decisions/0009-mes-in-its-own-repository.md)); its topics, schemas and envelope are code in `apps/uns/contract.py` |
+| Publisher | Reads the same transactional outbox as the graph, with its own cursor. Work centres become retained `equipment/v1` messages; a released order puts one retained `operation-request/v1` at the cell of each operation, cleared when the order is completed or cancelled. State-based, so publishing twice changes nothing; if the broker is down the cursor waits and nothing is lost |
+| Listener | `manage.py uns_listen` (Compose: `docker compose --profile uns up`) keeps a persistent MQTT session, so events sent while it was down arrive when it starts. Each `operation-performance/v1` event is checked (order, operation, the cell that reported it) and posted with its event ID as the idempotency key; a repeat returns the first confirmation (`replayed: true`); a broken rule is answered `REJECTED` with the reason |
+| Switch | Off unless `MQTT_URL` is set, like the graph without `NEO4J_URI`. `manage.py uns_republish` publishes the whole current state to a new or emptied broker |
+| Tests | An in-memory broker with retained messages and wildcards for the scenarios; CI also runs a real Mosquitto for the integration test |
 
 ## What Wave 5b delivers
 
@@ -589,6 +609,7 @@ apps/
   graph/       Knowledge graph: outbox, projection (ontology), Neo4j store, Cypher queries, role filtering
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
+  uns/         Unified Namespace bridge: contract, publisher, listener (uns_listen, uns_republish)
   production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate (services.py);
                production orders, confirmations, settlement (orders.py); setup_demo_production
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
