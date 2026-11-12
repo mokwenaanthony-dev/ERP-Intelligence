@@ -12,9 +12,9 @@ are ordered the way they are.
 
 ```mermaid
 flowchart TB
-    subgraph Floor["Shop floor (separate MES project) 🗺️"]
-        PLC["Machines / PLCs"] --> EDGE["Rust edge agents"]
-        EDGE -- "MQTT" --> UNS[("Unified Namespace 🔜<br/>Mosquitto, ISA-95 topic paths")]
+    subgraph Floor["Shop floor (MES-Intelligence repository) ✅"]
+        PLC["Machines / PLCs<br/>(simulated, Modbus TCP)"] --> EDGE["Rust edge agents"]
+        EDGE -- "MQTT" --> UNS[("Unified Namespace ✅<br/>Mosquitto, ISA-95 topic paths")]
         MES["Python MES"] <--> UNS
     end
 
@@ -192,9 +192,9 @@ places:
   from the same transactional outbox that feeds the graph, so the ERP never writes to two places in one
   transaction (Wave 6).
 
-## Shop floor to finance: the MES link 🗺️
+## Shop floor to finance: the MES link ✅
 
-A separate MES project (machines → Rust edge agents → MQTT → Python MES) will exchange data with the
+[MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (machines → Rust edge agents → MQTT → Python MES) exchanges data with the
 ERP using the ISA-95 model, which is the standard for connecting a factory's operations to its ERP:
 
 | Direction | ISA-95 object (Parts 4 and 5) | What flows | ERP side |
@@ -230,7 +230,8 @@ Design rules:
 | 5b ✅ | Production orders: goods issue to order (261), confirmations with activity costs, receipt from order (101), settlement of variances; exact decimals in the API | Orders are what the MES runs; confirmations are what it reports |
 | 6a ✅ | UNS bridge, ERP side: outbox published to MQTT (equipment, operation requests), MES operation-performance events posted as idempotent confirmations ([contract v1](UNS_CONTRACT.md)) | Needs the hierarchy and production orders |
 | 6b ✅ | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0 (own repository): Python MES, store-and-forward, simulator, Mosquitto | Builds against the contract |
-| 6c 🔜 | Rust edge agent (MES 0.2.0); live cell state on the graph's cells | A real machine's data, same topics |
+| 6c ✅ | Rust edge agent (MES v0.2.0): standard library only, Modbus TCP to a simulated PLC; MES dispatching, confirmations with measured hours | A real machine's data, same topics |
+| 6d 🔜 | Live cell state on the graph's `Cell` nodes, from the retained `state/status` topics | Closes the loop between the UNS and the graph |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |

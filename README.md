@@ -11,9 +11,9 @@ modular monolith on Django/DRF and PostgreSQL: a Universal Journal that every mo
 immutable documents, and business rules in a service layer. On top of it come two read models: an
 **analytics layer** for totals over time, and a **knowledge graph** that turns the links between
 partners, materials, documents and cost centres into a semantic layer. That graph supports
-Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG-RAG) for enterprise AI agents. A companion MES
-project (Rust edge agents, MQTT, Python) will keep shop-floor activity in step with the books through
-the ISA-95 model.
+Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG-RAG) for enterprise AI agents. The companion
+[MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) project (Python MES, Rust edge agents, Modbus, MQTT) keeps shop-floor activity
+in step with the books through the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
 cost and profit centres, and an analytics layer with financial statements and margin analysis. 400+ tests, 99% coverage, CI with linting, security scanning and dependency
@@ -59,7 +59,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 5c | Idempotency everywhere: a required `Idempotency-Key` on every request that changes data (the first answer is replayed on retry, nothing posts twice); MES events replay their first confirmation | Done |
 | 6a | Unified Namespace bridge (ERP side): publishes equipment and released orders' operation requests to MQTT from the outbox; receives MES operation-performance events as idempotent confirmations and answers each one ([contract v1](docs/UNS_CONTRACT.md)) | Done |
 | 6b | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (own repository): Python MES on contract v1, store-and-forward, machine simulator, Mosquitto broker | Done (MES `v0.1.0`) |
-| 6c | Rust edge agent reading a simulated PLC (MES 0.2.0); live cell state on the graph | Next |
+| 6c | Rust edge agent (standard library only) driving a simulated PLC over Modbus TCP; the MES dispatches jobs to it and confirms them here with measured machine hours | Done (MES `v0.2.0`) |
+| 6d | Live cell state on the knowledge graph | Next |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
