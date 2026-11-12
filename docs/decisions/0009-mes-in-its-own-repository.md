@@ -1,6 +1,7 @@
 # 0009. The MES lives in its own repository; the Unified Namespace contract is the only link
 
 - **Status:** Accepted, 2026-11-10 (before Wave 6)
+- **Implemented:** ERP side in v0.12.0 (Wave 6a); [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0, 2026-11-12
 
 ## Context
 

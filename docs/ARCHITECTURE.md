@@ -229,7 +229,8 @@ Design rules:
 | 5a ✅ | Production master data: ISA-95 equipment hierarchy (areas, lines, cells) in the ERP and the graph, ontology document, activity rates, bills of materials, routings, cost estimate, where-used | The hierarchy is the vocabulary the UNS and the graph share |
 | 5b ✅ | Production orders: goods issue to order (261), confirmations with activity costs, receipt from order (101), settlement of variances; exact decimals in the API | Orders are what the MES runs; confirmations are what it reports |
 | 6a ✅ | UNS bridge, ERP side: outbox published to MQTT (equipment, operation requests), MES operation-performance events posted as idempotent confirmations ([contract v1](UNS_CONTRACT.md)) | Needs the hierarchy and production orders |
-| 6b 🔜 | MES-Intelligence (own repository): Python MES, simulator, Mosquitto; then the Rust edge agent and live cell state on the graph | Builds against the contract |
+| 6b ✅ | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0 (own repository): Python MES, store-and-forward, simulator, Mosquitto | Builds against the contract |
+| 6c 🔜 | Rust edge agent (MES 0.2.0); live cell state on the graph's cells | A real machine's data, same topics |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |

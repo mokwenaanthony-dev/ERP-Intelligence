@@ -57,8 +57,9 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 5a | Production master data: ISA-95 equipment hierarchy (areas, lines, work centres) with UNS topic paths, activity types and rates, multi-level bills of materials, routings, standard cost estimate, where-used on the graph; ontology documented | Done |
 | 5b | Production orders: release, goods issue to the order (261), confirmations charging machine and labour hours, goods receipt from the order (101), settlement of variances, planned-against-actual costs; exact decimals in every API response | Done |
 | 5c | Idempotency everywhere: a required `Idempotency-Key` on every request that changes data (the first answer is replayed on retry, nothing posts twice); MES events replay their first confirmation | Done |
-| 6a | Unified Namespace bridge (ERP side): publishes equipment and released orders' operation requests to MQTT from the outbox; receives MES operation-performance events as idempotent confirmations and answers each one ([contract v1](docs/UNS_CONTRACT.md)) | In review |
-| 6b | MES-Intelligence (own repository): Python MES, machine simulator, Mosquitto broker; Rust edge agent next | Next |
+| 6a | Unified Namespace bridge (ERP side): publishes equipment and released orders' operation requests to MQTT from the outbox; receives MES operation-performance events as idempotent confirmations and answers each one ([contract v1](docs/UNS_CONTRACT.md)) | Done |
+| 6b | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (own repository): Python MES on contract v1, store-and-forward, machine simulator, Mosquitto broker | Done (MES `v0.1.0`) |
+| 6c | Rust edge agent reading a simulated PLC (MES 0.2.0); live cell state on the graph | Next |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
@@ -266,6 +267,7 @@ uns_listen <-- .../press3/events/operation-performance <------------------------
 | Listener | `manage.py uns_listen` (Compose: `docker compose --profile uns up`) keeps a persistent MQTT session, so events sent while it was down arrive when it starts. Each `operation-performance/v1` event is checked (order, operation, the cell that reported it) and posted with its event ID as the idempotency key; a repeat returns the first confirmation (`replayed: true`); a broken rule is answered `REJECTED` with the reason |
 | Switch | Off unless `MQTT_URL` is set, like the graph without `NEO4J_URI`. `manage.py uns_republish` publishes the whole current state to a new or emptied broker |
 | Tests | An in-memory broker with retained messages and wildcards for the scenarios; CI also runs a real Mosquitto for the integration test |
+| The other side | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) runs the broker and the MES with simulated cells (`docker compose up -d` there); its README walks through releasing an order here and watching it be produced, confirmed and posted |
 
 ## What Wave 5b delivers
 
