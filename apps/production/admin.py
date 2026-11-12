@@ -13,6 +13,7 @@ from .models import (
     ActivityType,
     BillOfMaterials,
     BOMItem,
+    CellState,
     Confirmation,
     OrderComponent,
     OrderOperation,
@@ -127,6 +128,20 @@ class ProductionOrderAdmin(admin.ModelAdmin):
 class ConfirmationAdmin(admin.ModelAdmin):
     list_display = ("order", "confirmation_number", "operation", "posting_date", "yield_quantity", "is_final")
     search_fields = ("order__order_number", "external_id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CellState)
+class CellStateAdmin(admin.ModelAdmin):
+    """Read-only: written by the UNS listener from the shop floor (Wave 6d), never by hand."""
+
+    list_display = ("work_center", "state", "since", "order_number", "operation_number", "source", "reported_at")
+    list_filter = ("state", "work_center__plant")
 
     def has_add_permission(self, request):
         return False

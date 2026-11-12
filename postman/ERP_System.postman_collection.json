@@ -2130,6 +2130,37 @@
           }
         },
         {
+          "name": "Shop floor: cells down and the orders they hold up (Wave 6d)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/graph/shop-floor/?plant=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "graph",
+                "shop-floor",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                }
+              ]
+            },
+            "description": "Every cell's live state from the shop floor; for cells DOWN or OFFLINE, the released production orders with operations there and the open sales orders for what they make. Log in as planner to see production orders."
+          }
+        },
+        {
           "name": "GraphRAG context for a sales order",
           "request": {
             "method": "GET",

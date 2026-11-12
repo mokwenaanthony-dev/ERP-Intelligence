@@ -83,7 +83,10 @@ def check_work_center(plant, line, cost_center, activity_types=()):
 
 def equipment_hierarchy(plant) -> dict:
     """The plant's ISA-95 equipment tree with each level's UNS topic path (``GET /api/production/equipment/``)."""
+    from .shopfloor import plant_states, state_data  # shopfloor imports models only; no cycle
+
     company_code = plant.company_code
+    states = plant_states(plant)
     areas = []
     for area in plant.production_areas.order_by("code").prefetch_related(
         "lines__work_centers__activity_types", "lines__work_centers__cost_center"
@@ -95,6 +98,7 @@ def equipment_hierarchy(plant) -> dict:
                 "cost_center": wc.cost_center.code,
                 "activity_types": sorted(a.code for a in wc.activity_types.all()),
                 "is_active": wc.is_active, "uns_path": wc.uns_path,
+                "live_state": state_data(states.get(wc.pk)),  # from the shop floor (Wave 6d)
             } for wc in sorted(line.work_centers.all(), key=lambda w: w.code)]
             lines.append({"code": line.code, "name": line.name, "isa95_level": line.isa95_level,
                           "isa95_type": line.isa95_type, "is_active": line.is_active,

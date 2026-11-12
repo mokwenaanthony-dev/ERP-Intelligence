@@ -1,7 +1,7 @@
 # Knowledge graph ontology
 
-**Version 1.2** (Wave 5b: production orders). 1.1 added the equipment hierarchy, BOMs and routings
-(Wave 5a); 1.0 was Wave 4b.
+**Version 1.3** (Wave 6d: live cell state). 1.2 added production orders (Wave 5b); 1.1 the equipment
+hierarchy, BOMs and routings (Wave 5a); 1.0 was Wave 4b.
 
 This document defines what every node type and relationship in the knowledge graph means, how it is
 keyed and which ERP data it comes from. It is the contract for anyone who queries the graph: people,
@@ -50,7 +50,7 @@ labelled `Cell` here ([ADR 0006](decisions/0006-isa-95-equipment-hierarchy-as-sh
 |---|---|---|---|---|
 | `Area` | Area | `1000/ASSY` | code, name, isa95_level, uns_path, is_active | `production.ProductionArea` |
 | `Line` | Work centre, type production line | `1000/L1` | code, name, isa95_level, isa95_type, uns_path, is_active | `production.ProductionLine` |
-| `Cell` | Work unit, normally a work cell | `1000/PRESS3` | code, name, isa95_level, uns_path, capacity_hours_per_day, activity_types, is_active | `production.WorkCenter` |
+| `Cell` | Work unit, normally a work cell | `1000/PRESS3` | code, name, isa95_level, uns_path, capacity_hours_per_day, activity_types, is_active; live state (1.3): state, state_since, state_order, state_operation, state_reported_at | `production.WorkCenter`, `production.CellState` |
 
 | Relationship | Meaning |
 |---|---|
@@ -58,10 +58,15 @@ labelled `Cell` here ([ADR 0006](decisions/0006-isa-95-equipment-hierarchy-as-sh
 | `(Line)-[:PART_OF]->(Area)` | |
 | `(Cell)-[:PART_OF]->(Line)` | |
 | `(Cell)-[:CHARGED_TO]->(CostCenter)` | Activity at this cell (machine and labour hours) is costed through this cost centre |
+| `(Cell)-[:RUNNING]->(ProductionOrder)` | operation_number, since: the order the cell is working on now (new in 1.3); only while RUNNING, and only to an order the ERP has |
 
 `uns_path` is the cell's Unified Namespace topic path, e.g. `1000/1000/assy/l1/press3`
 ([ADR 0007](decisions/0007-unified-namespace-conventions.md)): live state for the node is published
-under that path.
+under that path. Since 1.3 the node also **carries** that state: the UNS listener keeps each cell's
+latest retained `state/status` in `production.CellState`, and the outbox projects it here
+([ADR 0011](decisions/0011-live-cell-state-in-the-erp-and-the-graph.md)). `state` is one of
+`RUNNING`, `IDLE`, `SETUP`, `DOWN`, `OFFLINE`; a cell that has never reported has no `state` at all
+(unknown, not guessed). Like everything else, it is rebuilt from ERP tables by `graph_rebuild`.
 
 ## Materials, BOMs and routings
 
@@ -140,4 +145,5 @@ because accounting numbers restart each year.
 | `/api/graph/document-flow/` | Order → delivery → invoice → payment (and the purchasing chain) |
 | `/api/graph/supplier-dependency/` | Single-source materials and the customers that depend on them |
 | `/api/graph/where-used/<material>/` | Products that use a material at any BOM level, their open sales orders, and open production orders that need it (1.1, orders in 1.2) |
+| `/api/graph/shop-floor/?plant=` | Every cell's live state; for cells DOWN or OFFLINE, the released production orders and open sales orders they hold up (1.3) |
 | `/api/graph/context/` | KG-RAG: a node's neighbourhood as grounded facts for an AI agent |

@@ -16,9 +16,12 @@ EQUIPMENT = "equipment/v1"
 OPERATION_REQUEST = "operation-request/v1"
 OPERATION_PERFORMANCE = "operation-performance/v1"
 CONFIRMATION_RESULT = "confirmation-result/v1"
+EQUIPMENT_STATE = "equipment-state/v1"
+STATES = ("RUNNING", "IDLE", "SETUP", "DOWN", "OFFLINE")
 
 # Equipment-level topics: <enterprise>/<site>/<area>/<line>/<cell>/<namespace>/<name>
 PERFORMANCE_SUBSCRIPTION = "+/+/+/+/+/events/operation-performance"
+STATE_SUBSCRIPTION = "+/+/+/+/+/state/status"  # retained cell state from edge agents and the MES (Wave 6d)
 
 
 def equipment_topic(uns_path: str) -> str:

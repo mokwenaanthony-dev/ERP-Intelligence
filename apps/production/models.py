@@ -436,3 +436,37 @@ class ConfirmationActivity(models.Model):
 
     class Meta:
         ordering = ["confirmation", "activity_type__code"]
+
+
+class CellState(models.Model):
+    """What a cell is doing now, as its edge agent or MES last reported it (Wave 6d, ADR 0011).
+
+    One row per work centre, replaced by every newer report: the ERP keeps the **latest** state only.
+    History of machine states belongs in a time-series store, not in the system of record. The row is
+    written by the UNS listener from the retained ``<cell>/state/status`` topic (``equipment-state/v1``)
+    and projected onto the graph's ``Cell`` node through the outbox, so the graph stays a read model.
+    """
+
+    class State(models.TextChoices):
+        RUNNING = "RUNNING", "Running"
+        IDLE = "IDLE", "Idle"
+        SETUP = "SETUP", "Setup"
+        DOWN = "DOWN", "Down"
+        OFFLINE = "OFFLINE", "Offline"
+
+    work_center = models.OneToOneField(WorkCenter, on_delete=models.CASCADE, primary_key=True,
+                                       related_name="live_state")
+    state = models.CharField(max_length=10, choices=State.choices)
+    since = models.DateTimeField(null=True, blank=True, help_text="When the cell entered this state.")
+    order_number = models.CharField(max_length=20, blank=True, default="",
+                                    help_text="The production order being worked on, when running.")
+    operation_number = models.PositiveIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=64, blank=True, default="", help_text="Who reported it, e.g. mes-edge/press3.")
+    reported_at = models.DateTimeField(help_text="The message's timestamp: older reports never overwrite newer ones.")
+    received_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["work_center"]
+
+    def __str__(self):
+        return f"{self.work_center} {self.state}"

@@ -129,8 +129,11 @@ stops resending once it has a result for the event.
 "data": {"state": "RUNNING", "order": "MO00000001", "operation_number": 10, "since": "2026-06-01T08:00:00+02:00"}
 ```
 
-`state` is one of `RUNNING`, `IDLE`, `SETUP`, `DOWN`, `OFFLINE`. Informational in version 1: the
-ERP does not post anything for it.
+`state` is one of `RUNNING`, `IDLE`, `SETUP`, `DOWN`, `OFFLINE`. The ERP posts nothing for it and
+sends no answer (it is state, not an event). Since Wave 6d the ERP **reads** it: the listener keeps
+each cell's latest state, newest `timestamp` wins, and shows it in the equipment tree and on the
+graph's `Cell` nodes ([ADR 0011](decisions/0011-live-cell-state-in-the-erp-and-the-graph.md)). A new
+consumer of an existing message, so contract version 1 is unchanged.
 
 ## 5. Versioning
 

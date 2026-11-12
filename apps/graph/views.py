@@ -1,5 +1,5 @@
-"""Knowledge graph API: Customer 360, document flow, supplier dependency, where used, KG-RAG context, status
-and rebuild.
+"""Knowledge graph API: Customer 360, document flow, supplier dependency, where used, shop floor, KG-RAG
+context, status and rebuild.
 
 Every query is filtered by the caller's role (``access.py``), so the graph never shows a user more
 than the relational API would. Returns 503 when the graph is switched off (no ``NEO4J_URI``).
@@ -98,6 +98,19 @@ class WhereUsedView(_GraphView):
         if result is None:
             raise NotFound(f"Material {material} is not in the graph.")
         return Response(result)
+
+
+class ShopFloorView(_GraphView):
+    """GET /api/graph/shop-floor/?plant=1000 - every cell's live state; for cells that are down or offline,
+    the released production orders and open sales orders they hold up (each shown only to roles that
+    may see them)."""
+
+    def get(self, request):
+        self.require("Cell")
+        plant = request.query_params.get("plant", "").strip().upper()
+        if not plant:
+            raise serializers.ValidationError({"plant": "Give a plant code, e.g. plant=1000."})
+        return Response(queries.shop_floor(plant, self.allowed))
 
 
 class ContextView(_GraphView):

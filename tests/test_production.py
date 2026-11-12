@@ -149,6 +149,7 @@ def test_equipment_tree(pp, client_for):
     assert line["work_centers"][1] == {
         "code": "PRESS3", "name": "Press 3", "isa95_level": "WorkCell", "cost_center": "4000",
         "activity_types": ["LAB", "MACH"], "is_active": True, "uns_path": "1000/1000/assy/l1/press3",
+        "live_state": None,  # no report from the shop floor yet (Wave 6d)
     }
     assert viewer.get(f"{API}/equipment/?plant=XX").status_code == 400
 

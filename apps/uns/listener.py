@@ -10,17 +10,23 @@ message to ``handle_performance``, which:
    idempotency key (ADR 0010): the same event again returns the confirmation posted the first time;
 4. answers on ``<company>/<plant>/erp/events/confirmation-result`` with POSTED (``replayed`` true for
    a repeat) or REJECTED and the business rule's message, so the MES knows it can stop resending.
+
+Wave 6d: it also subscribes to ``+/+/+/+/+/state/status``, the retained cell state that edge agents
+and the MES publish (``equipment-state/v1``). ``handle_state`` keeps the latest state per work centre
+(``apps/production/shopfloor.py``), from where it reaches the graph's ``Cell`` nodes. State is not an
+event, so it gets no answer.
 """
 import json
 import logging
-from datetime import date
+from datetime import date, timezone as dt_timezone
 from decimal import Decimal, InvalidOperation
 
 from django.db import close_old_connections
+from django.utils.dateparse import parse_datetime
 
 from apps.common.logcontext import request_id
 from apps.finance.services import PostingError
-from apps.production import orders
+from apps.production import orders, shopfloor
 from apps.production.models import ProductionOrder
 
 from . import contract
@@ -123,8 +129,57 @@ def handle_performance(broker, topic: str, payload: bytes) -> dict | None:
         request_id.reset(token)
 
 
+def _when(value, name):
+    """An ISO 8601 date-time from a message; one without an offset is taken as UTC."""
+    moment = parse_datetime(str(value)) if value else None
+    if moment is None:
+        raise MessageError(f"{name} must be an ISO 8601 date-time, got {value!r}.")
+    return moment if moment.tzinfo else moment.replace(tzinfo=dt_timezone.utc)
+
+
+def handle_state(topic: str, payload: bytes) -> str:
+    """Keep one cell's retained state (``equipment-state/v1``). Returns what happened, for logs and
+    tests: ``created``, ``updated``, ``unchanged``, ``stale``, ``cleared`` or ``ignored``.
+    """
+    levels = topic.split("/")
+    if len(levels) != 7 or levels[5:] != ["state", "status"]:
+        logger.warning("Ignored message on unexpected topic %s", topic)
+        return "ignored"
+    path = "/".join(levels[:5])
+    work_center = shopfloor.work_center_for_path(path)
+    if work_center is None:
+        logger.info("State for %s ignored: no such work centre in the ERP", path)
+        return "ignored"
+    if not payload:  # the retained state was cleared: the ERP no longer knows the cell's state
+        return "cleared" if shopfloor.clear_cell_state(work_center) else "unchanged"
+    try:
+        message = _parse(topic, payload)
+        if message.get("schema") != contract.EQUIPMENT_STATE:
+            logger.warning("Ignored message with unknown schema %r on %s", message.get("schema"), topic)
+            return "ignored"
+        data = message["data"]
+        state = data.get("state")
+        if state not in contract.STATES:
+            raise MessageError(f"state must be one of {', '.join(contract.STATES)}, got {state!r}.")
+        operation = data.get("operation_number")
+        if operation is not None and (not isinstance(operation, int) or isinstance(operation, bool)):
+            raise MessageError(f"operation_number must be a whole number, got {operation!r}.")
+        report = shopfloor.Report(
+            state=state,
+            since=_when(data["since"], "since") if data.get("since") else None,
+            order_number=str(data.get("order") or "")[:20],
+            operation_number=operation,
+            source=str(message.get("source") or "")[:64],
+            reported_at=_when(message.get("timestamp"), "timestamp"),
+        )
+    except MessageError as exc:
+        logger.warning("State message on %s ignored: %s", topic, exc)
+        return "ignored"
+    return shopfloor.record_cell_state(work_center, report)
+
+
 def listen(broker, manage_db_connections: bool = False) -> None:
-    """Subscribe to every cell's performance events; the caller keeps the process alive.
+    """Subscribe to every cell's performance events and states; the caller keeps the process alive.
 
     ``manage_db_connections`` is for the long-running ``uns_listen`` process, where messages arrive
     on paho's network thread: like Django does around each web request, a stale database connection
@@ -132,15 +187,22 @@ def listen(broker, manage_db_connections: bool = False) -> None:
     there the caller's transaction owns the connection, and closing it would break that transaction
     (found in CI, where PostgreSQL closes it; SQLite's in-memory database never does).
     """
-    def on_message(topic, payload):
-        """Handle one message, with Django's connection housekeeping when running as the listener process."""
-        if manage_db_connections:
-            close_old_connections()
-        try:
-            handle_performance(broker, topic, payload)
-        finally:
+    def housekeeping(handler):
+        """Wrap a handler with Django's connection housekeeping when running as the listener process."""
+        def on_message(topic, payload):
+            """Handle one message; a failure is logged and never stops the listener."""
             if manage_db_connections:
                 close_old_connections()
+            try:
+                handler(topic, payload)
+            except Exception:
+                logger.exception("Could not handle message on %s", topic)
+            finally:
+                if manage_db_connections:
+                    close_old_connections()
+        return on_message
 
-    broker.subscribe(contract.PERFORMANCE_SUBSCRIPTION, on_message)
-    logger.info("Listening for %s", contract.PERFORMANCE_SUBSCRIPTION)
+    broker.subscribe(contract.PERFORMANCE_SUBSCRIPTION,
+                     housekeeping(lambda topic, payload: handle_performance(broker, topic, payload)))
+    broker.subscribe(contract.STATE_SUBSCRIPTION, housekeeping(handle_state))
+    logger.info("Listening for %s and %s", contract.PERFORMANCE_SUBSCRIPTION, contract.STATE_SUBSCRIPTION)
