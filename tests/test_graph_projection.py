@@ -27,7 +27,9 @@ D = Decimal
 
 @pytest.fixture
 def graph_off(settings):
-    settings.GRAPH_ENABLED = False  # CI sets NEO4J_URI, which switches the graph on for every test
+    # CI sets NEO4J_URI and MQTT_URL, which switch the graph and the UNS bridge on for every test.
+    # Both consumers write the outbox, so both must be off for "no events".
+    settings.GRAPH_ENABLED = settings.UNS_ENABLED = False
 
 
 @pytest.fixture

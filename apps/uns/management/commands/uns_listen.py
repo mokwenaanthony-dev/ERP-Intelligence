@@ -19,7 +19,7 @@ class Command(BaseCommand):
         if not settings.UNS_ENABLED:
             raise CommandError("The UNS bridge is off: set MQTT_URL (e.g. mqtt://localhost:1883).")
         broker = MqttBroker(settings.MQTT_URL, client_id="erp-intelligence-listener", persistent=True)
-        listen(broker)
+        listen(broker, manage_db_connections=True)
         self.stdout.write(self.style.SUCCESS("Listening for operation-performance events. Ctrl+C to stop."))
         try:
             threading.Event().wait()  # the MQTT client's own thread does the work

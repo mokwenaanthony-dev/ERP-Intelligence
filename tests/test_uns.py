@@ -252,3 +252,16 @@ def test_contract_helpers():
     assert contract.confirmation_result_topic("1000", "1000") == RESULTS
     message = json.loads(contract.envelope("x/v1", {"amount": D("1.50")}, "e-1"))
     assert message["data"] == {"amount": "1.50"} and message["event_id"] == "e-1"
+
+
+def test_the_listener_process_manages_its_own_db_connections(uns, monkeypatch):
+    calls = []
+    monkeypatch.setattr(listener, "close_old_connections", lambda: calls.append(1))
+    listener.listen(uns.broker, manage_db_connections=True)  # as uns_listen does, on paho's thread
+    uns.broker.publish("1000/1000/assy/l1/press3/events/operation-performance", b"not json")
+    assert len(calls) == 2  # before and after the message, like Django around a web request
+    calls.clear()
+    other = MemoryBroker()
+    listener.listen(other)  # tests and in-process callers: the connection belongs to the caller
+    other.publish("1000/1000/assy/l1/press3/events/operation-performance", b"not json")
+    assert calls == []

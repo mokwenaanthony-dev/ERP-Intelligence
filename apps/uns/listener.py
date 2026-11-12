@@ -94,7 +94,6 @@ def handle_performance(broker, topic: str, payload: bytes) -> dict | None:
     event_id, message = None, {}
     token = request_id.set("uns")
     try:
-        close_old_connections()  # this runs on the MQTT network thread; drop stale DB connections
         try:
             message = _parse(topic, payload)
             if message.get("schema") != contract.OPERATION_PERFORMANCE:
@@ -124,8 +123,24 @@ def handle_performance(broker, topic: str, payload: bytes) -> dict | None:
         request_id.reset(token)
 
 
-def listen(broker) -> None:
-    """Subscribe to every cell's performance events; the caller keeps the process alive."""
-    broker.subscribe(contract.PERFORMANCE_SUBSCRIPTION,
-                     lambda topic, payload: handle_performance(broker, topic, payload))
+def listen(broker, manage_db_connections: bool = False) -> None:
+    """Subscribe to every cell's performance events; the caller keeps the process alive.
+
+    ``manage_db_connections`` is for the long-running ``uns_listen`` process, where messages arrive
+    on paho's network thread: like Django does around each web request, a stale database connection
+    is dropped before each message and an expired one after it. Never inside a test or a request:
+    there the caller's transaction owns the connection, and closing it would break that transaction
+    (found in CI, where PostgreSQL closes it; SQLite's in-memory database never does).
+    """
+    def on_message(topic, payload):
+        """Handle one message, with Django's connection housekeeping when running as the listener process."""
+        if manage_db_connections:
+            close_old_connections()
+        try:
+            handle_performance(broker, topic, payload)
+        finally:
+            if manage_db_connections:
+                close_old_connections()
+
+    broker.subscribe(contract.PERFORMANCE_SUBSCRIPTION, on_message)
     logger.info("Listening for %s", contract.PERFORMANCE_SUBSCRIPTION)
