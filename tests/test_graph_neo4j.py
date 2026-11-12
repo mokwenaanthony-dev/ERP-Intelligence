@@ -270,6 +270,7 @@ def test_shop_floor_shows_down_cells_and_the_orders_they_hold_up(graph, make_use
     sales = queries.shop_floor("1000", labels_for(make_user, Role.SALES_REP))
     assert sales["needs_attention"][0]["held_up"] == []  # a sales rep may not see production orders
 
-    response = client_for(Role.PRODUCTION_PLANNER).get("/api/graph/shop-floor/", {"plant": "1000"})
+    api = client_for(Role.PRODUCTION_PLANNER)  # one user: client_for names each user after its role
+    response = api.get("/api/graph/shop-floor/", {"plant": "1000"})
     assert response.status_code == 200 and response.data["needs_attention"][0]["cell"] == "1000/PRESS3"
-    assert client_for(Role.PRODUCTION_PLANNER).get("/api/graph/shop-floor/").status_code == 400
+    assert api.get("/api/graph/shop-floor/").status_code == 400
