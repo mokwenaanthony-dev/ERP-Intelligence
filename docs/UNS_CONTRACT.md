@@ -6,8 +6,9 @@ sides build against this document; it is the only thing they share
 [ADR 0006](decisions/0006-isa-95-equipment-hierarchy-as-shared-vocabulary.md) (vocabulary) and
 [ADR 0007](decisions/0007-unified-namespace-conventions.md) (topics, retained state, message names).
 
-> Status: **version 1, accepted 2026-11-12**. Implemented on the ERP side in Wave 6a (`apps/uns`). From
-> here on, a change is a new schema version (section 5).
+> Status: **version 1, accepted 2026-11-12**. Implemented on the ERP side in Wave 6a (`apps/uns`) and on
+> the MES side in [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0. From here on, a change is a new schema version
+> (section 5).
 
 ## 1. Topic paths
 
