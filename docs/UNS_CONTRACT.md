@@ -6,8 +6,8 @@ sides build against this document; it is the only thing they share
 [ADR 0006](decisions/0006-isa-95-equipment-hierarchy-as-shared-vocabulary.md) (vocabulary) and
 [ADR 0007](decisions/0007-unified-namespace-conventions.md) (topics, retained state, message names).
 
-> Status: **draft for Wave 6**. Changes before the first release are free; after it, a change is a
-> new schema version.
+> Status: **version 1, accepted 2026-11-12**. Implemented on the ERP side in Wave 6a (`apps/uns`). From
+> here on, a change is a new schema version (section 5).
 
 ## 1. Topic paths
 
@@ -27,7 +27,7 @@ sides build against this document; it is the only thing they share
 | Topic | Publisher | Retained | ISA-95 object | Purpose |
 |---|---|---|---|---|
 | `<cell path>/definition/equipment` | ERP | yes | Equipment | What the cell is: name, ISA-95 level, cost centre, activity types |
-| `<cell path>/schedule/operation-requests/<order>-<operation>` | ERP | yes | Operations request | One operation of a released order, waiting at this cell |
+| `<cell path>/schedule/operation-requests/<order>-<operation>` | ERP | yes | Operations request | One operation of a released order, waiting at this cell; e.g. `.../press3/schedule/operation-requests/mo00000001-0010` (lower case, operation as four digits) |
 | `<cell path>/state/status` | MES / edge | yes | Equipment state | What the cell is doing now |
 | `<cell path>/events/operation-performance` | MES | no | Operations performance | Work done on an operation: yield, scrap, activity |
 | `<enterprise>/<site>/erp/events/confirmation-result` | ERP | no | Operations response | Whether the ERP posted a performance message, and why not |

@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "apps.purchasing",
     "apps.hr",
     "apps.production",
+    "apps.uns",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +173,7 @@ CELERY_BEAT_SCHEDULE = {
     "refresh-analytics-views": {"task": "analytics.refresh_views", "schedule": 15 * 60},
     "project-outbox-to-graph": {"task": "graph.process_outbox", "schedule": 10},
     "purge-idempotency-keys": {"task": "common.purge_idempotency_keys", "schedule": 24 * 60 * 60},
+    "publish-outbox-to-uns": {"task": "uns.publish_outbox", "schedule": 5},
 }
 
 # How long a client may retry a request with the same Idempotency-Key and get the first answer (ADR 0010).
@@ -183,6 +185,12 @@ NEO4J_URI = config("NEO4J_URI", default="")
 NEO4J_USER = config("NEO4J_USER", default="neo4j")
 NEO4J_PASSWORD = config("NEO4J_PASSWORD", default="")
 GRAPH_ENABLED = bool(NEO4J_URI)
+
+# --- Unified Namespace bridge (Wave 6, ADR 0009) ---------------------------------------------------
+# Off unless MQTT_URL is set (e.g. mqtt://localhost:1883 or mqtts://user:pass@broker:8883). The broker
+# runs in the MES-Intelligence repository's Docker Compose; the contract is docs/UNS_CONTRACT.md.
+MQTT_URL = config("MQTT_URL", default="")
+UNS_ENABLED = bool(MQTT_URL)
 
 # --- Logging (design document, section 4) -----------------------------------------
 # Three destinations, all with the same detailed format:
