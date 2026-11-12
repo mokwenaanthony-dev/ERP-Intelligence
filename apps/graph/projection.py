@@ -1,4 +1,4 @@
-"""Ontology v1: how ERP records become nodes and relationships.
+"""Ontology v1 (version 1.3): how ERP records become nodes and relationships.
 
 Every projector reads the *current* state of one record and writes it with idempotent MERGEs, so
 events can be processed more than once or out of order and the graph still ends up correct; the
@@ -16,7 +16,12 @@ graph without mapping tables.
     (:Cell)-[:PART_OF]->(:Line)-[:PART_OF]->(:Area)-[:PART_OF]->(:Plant), (:Cell)-[:CHARGED_TO]->(:CostCenter)
     (:BOM)-[:FOR]->(:Material), (:BOM)-[:CONSUMES]->(:Material), (:Routing)-[:HAS_OPERATION]->(:Cell)
     (:ProductionOrder)-[:PRODUCES]->(:Material), (:ProductionOrder)-[:CONSUMES]->(:Material),
-    (:ProductionOrder)-[:HAS_OPERATION]->(:Cell)
+    (:ProductionOrder)-[:HAS_OPERATION]->(:Cell), (:Cell)-[:RUNNING]->(:ProductionOrder)
+
+Since 1.3 (Wave 6d) a ``Cell`` also carries its live state from the shop floor (``state``,
+``state_since``, ``state_order``, ``state_operation``, ``state_reported_at``) and, while running, a
+``RUNNING`` relationship to the order it works on. The state comes from ``production.CellState``, the
+ERP's copy of the cell's retained UNS state, so the graph is still rebuilt from ERP tables only.
 
 Equipment nodes use ISA-95 names (ADR 0006) and carry their ISA-95 level and Unified Namespace topic
 path (``uns_path``). The full ontology, with every property, is documented in ``docs/ONTOLOGY.md``.
@@ -29,7 +34,7 @@ DOCUMENT_LABELS = ["SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsR
                    "Payment", "ProductionOrder"]
 MASTER_LABELS = ["CompanyCode", "BusinessPartner", "Material", "Plant", "ProfitCenter", "CostCenter", "OrgUnit",
                  "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing"]
-ONTOLOGY_VERSION = "1.2"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
+ONTOLOGY_VERSION = "1.3"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
 ALL_LABELS = MASTER_LABELS + DOCUMENT_LABELS
 
 
@@ -174,18 +179,40 @@ def production_line(g, line):
 
 def work_center(g, wc):
     """``Cell`` node (the ERP's work centre, an ISA-95 work cell): PART_OF its line, CHARGED_TO
-    the cost centre its activity is costed through.
+    the cost centre its activity is costed through, its live state from the shop floor, and RUNNING
+    the production order it is working on (Wave 6d).
     """
+    from apps.production.models import CellState, ProductionOrder
+
     key = _plant_child_key(wc)
+    live = CellState.objects.filter(work_center=wc).first()
     # Labelled "Cell" (ISA-95), although the ERP calls it a work centre (SAP): see ADR 0006.
+    # State properties set to None are removed, so a cell without a report shows no stale state.
     g.node("Cell", key, {"code": wc.code, "name": wc.name, "isa95_level": wc.isa95_level,
                          "uns_path": wc.uns_path, "is_active": wc.is_active,
                          "capacity_hours_per_day": wc.capacity_hours_per_day,
-                         "activity_types": sorted(a.code for a in wc.activity_types.all())})
-    for rel in ("PART_OF", "CHARGED_TO"):
+                         "activity_types": sorted(a.code for a in wc.activity_types.all()),
+                         "state": live.state if live else None,
+                         "state_since": live.since if live else None,
+                         "state_order": (live.order_number or None) if live else None,
+                         "state_operation": live.operation_number if live else None,
+                         "state_reported_at": live.reported_at if live else None})
+    for rel in ("PART_OF", "CHARGED_TO", "RUNNING"):
         g.clear_edges("Cell", key, rel)
     g.edge("Cell", key, "PART_OF", "Line", _plant_child_key(wc.line))
     g.edge("Cell", key, "CHARGED_TO", "CostCenter", _company_child_key(wc.cost_center))
+    if live and live.state == CellState.State.RUNNING and live.order_number:
+        # Only to an order the ERP has: the edge never creates an order node out of a message.
+        order = ProductionOrder.objects.filter(company_code=wc.plant.company_code,
+                                               order_number=live.order_number).first()
+        if order is not None:
+            g.edge("Cell", key, "RUNNING", "ProductionOrder", _doc_key(order, "order_number"),
+                   {"operation_number": live.operation_number, "since": live.since})
+
+
+def cell_state(g, state):
+    """A cell's live state changed: project its ``Cell`` node again (the state has no node of its own)."""
+    work_center(g, state.work_center)
 
 
 def bill_of_materials(g, bom):
@@ -371,6 +398,7 @@ PROJECTORS = {
     "production.productionarea": (production_area, lambda o: ("Area", _plant_child_key(o))),
     "production.productionline": (production_line, lambda o: ("Line", _plant_child_key(o))),
     "production.workcenter": (work_center, lambda o: ("Cell", _plant_child_key(o))),
+    "production.cellstate": (cell_state, None),  # onto its Cell node
     "production.billofmaterials": (bill_of_materials, lambda o: ("BOM", o.key)),
     "production.routing": (routing, lambda o: ("Routing", o.key)),
     "production.productionorder": (production_order, lambda o: ("ProductionOrder", _doc_key(o, "order_number"))),
@@ -405,8 +433,9 @@ def rebuild(g, batch_size=200) -> int:
     """Project every record of every registered model, master data first. Returns the count."""
     count = 0
     for aggregate_type, (projector, _) in PROJECTORS.items():
-        if aggregate_type in ("masterdata.customerrole", "masterdata.supplierrole", "controlling.plantprofitcenter"):
-            continue  # projected through their business partner or plant
+        if aggregate_type in ("masterdata.customerrole", "masterdata.supplierrole", "controlling.plantprofitcenter",
+                              "production.cellstate"):
+            continue  # projected through their business partner, plant or work centre
         model = apps.get_model(aggregate_type)
         queryset = model.objects.all()
         if aggregate_type == "finance.journalentry":

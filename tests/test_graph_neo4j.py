@@ -235,3 +235,41 @@ def test_where_used_shows_open_production_orders(graph, make_user):
     assert (planned["production_order"], planned["status"], planned["product"], planned["quantity"]) == (
         f"1000/{order.order_number}", "RELEASED", "SF-3001", 100.0)  # 40 frames x 2.5 kg
     assert "open_production_orders" not in queries.where_used("RM-2001", labels_for(make_user, Role.SALES_REP))
+
+
+def test_shop_floor_shows_down_cells_and_the_orders_they_hold_up(graph, make_user, client_for):
+    """Wave 6d: a cell reports DOWN; the graph answers "which open orders does that hold up?"."""
+    import json
+    from datetime import date
+
+    from apps.masterdata.models import Material
+    from apps.organization.models import Plant
+    from apps.production import orders
+    from apps.uns import listener
+
+    call_command("setup_demo_production", stdout=StringIO())
+    order = orders.create_order(plant=Plant.objects.get(code="1000"), material=Material.objects.get(number="SF-3001"),
+                                quantity=Decimal("40"), start_date=date(2026, 6, 1))
+    orders.release_order(order, date(2026, 6, 1))
+    down = json.dumps({"schema": "equipment-state/v1", "event_id": None, "timestamp": "2026-06-01T09:00:00.000+00:00",
+                       "source": "mes-edge/press3",
+                       "data": {"state": "DOWN", "order": None, "operation_number": None,
+                                "since": "2026-06-01T09:00:00.000+00:00"}}).encode()
+    assert listener.handle_state("1000/1000/assy/l1/press3/state/status", down) == "created"
+    assert processor.process_outbox(limit=100000, store=get_store())["failed"] == 0
+
+    planner = queries.shop_floor("1000", labels_for(make_user, Role.PRODUCTION_PLANNER))
+    assert planner["states"] == {"DOWN": 1, "UNKNOWN": 1}  # ASSY1 has not reported: unknown, not guessed
+    [press] = planner["needs_attention"]
+    assert (press["cell"], press["state"], press["since"][:19]) == ("1000/PRESS3", "DOWN", "2026-06-01T09:00:00")
+    [held] = press["held_up"]
+    assert (held["production_order"], held["operation_number"], held["product"]) == (
+        f"1000/{order.order_number}", 10, "SF-3001")
+    assert held["open_sales_orders"] == []  # nobody has ordered frames on their own
+
+    sales = queries.shop_floor("1000", labels_for(make_user, Role.SALES_REP))
+    assert sales["needs_attention"][0]["held_up"] == []  # a sales rep may not see production orders
+
+    response = client_for(Role.PRODUCTION_PLANNER).get("/api/graph/shop-floor/", {"plant": "1000"})
+    assert response.status_code == 200 and response.data["needs_attention"][0]["cell"] == "1000/PRESS3"
+    assert client_for(Role.PRODUCTION_PLANNER).get("/api/graph/shop-floor/").status_code == 400

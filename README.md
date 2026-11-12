@@ -60,7 +60,7 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 6a | Unified Namespace bridge (ERP side): publishes equipment and released orders' operation requests to MQTT from the outbox; receives MES operation-performance events as idempotent confirmations and answers each one ([contract v1](docs/UNS_CONTRACT.md)) | Done |
 | 6b | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (own repository): Python MES on contract v1, store-and-forward, machine simulator, Mosquitto broker | Done (MES `v0.1.0`) |
 | 6c | Rust edge agent (standard library only) driving a simulated PLC over Modbus TCP; the MES dispatches jobs to it and confirms them here with measured machine hours | Done (MES `v0.2.0`) |
-| 6d | Live cell state on the knowledge graph | Next |
+| 6d | Live cell state: the ERP keeps each cell's latest state from the shop floor, shows it in the equipment tree and on the graph's cells, and answers "which cells are down and which orders do they hold up?" | Done |
 | 7 | CRM and SRM | Planned |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
@@ -250,6 +250,27 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 6d delivers
+
+```
+edge agent / MES --> .../press3/state/status (retained, equipment-state/v1)
+                          |
+uns_listen ---------------+--> CellState (latest per work centre; newer wins, repeats write nothing)
+                                   | outbox
+                                   +--> graph: (:Cell {state: 'DOWN', state_since: ...})
+                                               (:Cell)-[:RUNNING]->(:ProductionOrder) while running
+GET /api/graph/shop-floor/?plant=1000
+    -> cells DOWN or OFFLINE -> released production orders with operations there -> open sales orders
+```
+
+| Area | What exists |
+|---|---|
+| Listener | `uns_listen` also subscribes to `+/+/+/+/+/state/status`. Each message is checked (known work centre, contract state, dates) and kept as the cell's latest state in `production.CellState`. An unchanged state is not written, an older report never overwrites a newer one, an empty retained payload forgets the state. No answer: state is not an event ([ADR 0011](docs/decisions/0011-live-cell-state-in-the-erp-and-the-graph.md)) |
+| Equipment tree | `GET /api/production/equipment/?plant=1000` shows `live_state` per cell (state, since, order, operation, source); `null` for a cell that has never reported |
+| Knowledge graph (ontology 1.3) | `Cell` nodes carry `state`, `state_since`, `state_order`, `state_operation`, `state_reported_at`, and `RUNNING` the order being worked on. Projected through the outbox, so `graph_rebuild` restores it and the graph stays a read model |
+| Shop-floor query | `GET /api/graph/shop-floor/?plant=1000`: every cell's state and a count per state; for cells DOWN or OFFLINE, the released production orders with operations there and the open sales orders for what they make, each part shown only to roles that may see it |
+| End to end | With MES-Intelligence 0.2.0 running, `docker compose stop edge-press3` there makes PRESS3 OFFLINE (the agent's last will) and the shop-floor query lists the orders it holds up |
+
 ## What Wave 6a delivers
 
 ```
@@ -421,6 +442,7 @@ Employee records and salaries are visible to HR only.
 | GET | `/api/graph/document-flow/` | `?company_code=&document=SO00000001` (or DL, IN, PO, GR, IV, DZ, KZ numbers) |
 | GET | `/api/graph/supplier-dependency/` | `?company_code=` |
 | GET | `/api/graph/where-used/<material>/` | Products using the material at any BOM level, and open sales orders for them (sales roles) |
+| GET | `/api/graph/shop-floor/` | `?plant=`: live cell states; cells down or offline with the production and sales orders they hold up (filtered by role) |
 | GET | `/api/graph/context/` | `?label=&key=[&depth=1..3]`: knowledge-graph retrieval (KG-RAG), filtered by role |
 | POST | `/api/graph/rebuild/` | Administrators: rebuild the graph from the ERP tables |
 | CRUD | `/api/production/areas/`, `/lines/`, `/work-centers/` | `?plant=`; codes cannot be changed after creation |
@@ -429,7 +451,7 @@ Employee records and salaries are visible to HR only.
 | POST | `/api/production/boms/<id>/status/`, `/routings/<id>/status/` | `{"status": "ACTIVE" \| "INACTIVE"}` |
 | GET | `/api/production/boms/explode/` | `?material=&plant=&quantity=[&date=]`: multi-level explosion |
 | GET | `/api/production/cost-estimate/` | `?material=&plant=&quantity=[&date=]` |
-| GET | `/api/production/equipment/` | `?plant=`: ISA-95 tree with UNS topic paths |
+| GET | `/api/production/equipment/` | `?plant=`: ISA-95 tree with UNS topic paths and each cell's live state |
 | GET, POST | `/api/production/orders/` | `?plant=&status=&material=`; POST `{"material", "plant", "quantity", "start_date"[, "finish_date", "receipt_storage_location"]}` |
 | POST | `/api/production/orders/<id>/release/`, `/complete/` | `{"posting_date"}`; complete settles the variance |
 | POST | `/api/production/orders/<id>/cancel/` | Only before anything is posted |

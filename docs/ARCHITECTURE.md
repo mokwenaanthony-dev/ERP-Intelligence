@@ -127,7 +127,7 @@ Two rules carry over from the core:
 - **The graph explains, the core decides.** Agents read from the graph. Any change still goes through
   the service layer and its business rules.
 
-## Unified Namespace and knowledge graph: one vocabulary 🔜
+## Unified Namespace and knowledge graph: one vocabulary ✅
 
 The Unified Namespace (UNS) and the knowledge graph do different jobs and depend on each other:
 
@@ -231,7 +231,7 @@ Design rules:
 | 6a ✅ | UNS bridge, ERP side: outbox published to MQTT (equipment, operation requests), MES operation-performance events posted as idempotent confirmations ([contract v1](UNS_CONTRACT.md)) | Needs the hierarchy and production orders |
 | 6b ✅ | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0 (own repository): Python MES, store-and-forward, simulator, Mosquitto | Builds against the contract |
 | 6c ✅ | Rust edge agent (MES v0.2.0): standard library only, Modbus TCP to a simulated PLC; MES dispatching, confirmations with measured hours | A real machine's data, same topics |
-| 6d 🔜 | Live cell state on the graph's `Cell` nodes, from the retained `state/status` topics | Closes the loop between the UNS and the graph |
+| 6d ✅ | Live cell state: latest state per cell in the ERP, projected onto the graph's `Cell` nodes; shop-floor query (cells down and the orders they hold up) | Closes the loop between the UNS and the graph |
 | 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |

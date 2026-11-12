@@ -36,7 +36,8 @@ def _deleted(sender, instance, **kwargs):
         return
     _, node_of = PROJECTORS[model_key(instance)]
     if node_of is None:  # e.g. a customer role: the partner's own projection is refreshed instead
-        owner = getattr(instance, "business_partner", None) or getattr(instance, "plant", None)
+        owner = (getattr(instance, "business_partner", None) or getattr(instance, "plant", None)
+                 or getattr(instance, "work_center", None))  # a cell's state lives on its work centre's node
         if owner is not None:
             emit(owner)
         return

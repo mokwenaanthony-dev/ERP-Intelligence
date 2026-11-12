@@ -13,6 +13,7 @@ urlpatterns = [
     path("document-flow/", views.DocumentFlowView.as_view(), name="document-flow"),
     path("supplier-dependency/", views.SupplierDependencyView.as_view(), name="supplier-dependency"),
     path("where-used/<str:material>/", views.WhereUsedView.as_view(), name="where-used"),
+    path("shop-floor/", views.ShopFloorView.as_view(), name="shop-floor"),
     path("context/", views.ContextView.as_view(), name="graph-context"),
     path("rebuild/", views.RebuildView.as_view(), name="graph-rebuild"),
 ]

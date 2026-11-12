@@ -183,6 +183,56 @@ def where_used(material: str, allowed: set) -> dict | None:
     return result
 
 
+# --- Shop floor (Wave 6d) --------------------------------------------------------------------------
+
+ATTENTION_STATES = ["DOWN", "OFFLINE"]
+
+
+def shop_floor(plant: str, allowed: set) -> dict:
+    """Every cell of a plant with its live state; for cells that are down or offline, the released
+    production orders with operations there and the open sales orders for what those orders make.
+
+    The question is "which cells need attention, and which orders do they hold up?": a traversal
+    from the cell through the orders that need it to the customers waiting, filtered to what the
+    caller's role may see.
+    """
+    read = get_store().read
+    cells = [dict(row) for row in read(
+        "MATCH (c:Cell)-[:PART_OF]->(:Line)-[:PART_OF]->(:Area)-[:PART_OF]->(:Plant {key: $plant}) "
+        "RETURN c.key AS cell, c.code AS code, c.name AS name, c.uns_path AS uns_path, c.state AS state, "
+        "c.state_since AS since, c.state_order AS running_order, c.state_operation AS operation_number "
+        "ORDER BY cell", {"plant": plant})]
+    summary = {}
+    for cell in cells:
+        summary[cell["state"] or "UNKNOWN"] = summary.get(cell["state"] or "UNKNOWN", 0) + 1
+    attention = [cell for cell in cells if cell["state"] in ATTENTION_STATES]
+    for cell in attention:
+        cell["held_up"] = []
+    if attention and "ProductionOrder" in allowed:
+        by_cell = {cell["cell"]: cell for cell in attention}
+        rows = read(
+            "MATCH (po:ProductionOrder {status: 'RELEASED'})-[op:HAS_OPERATION]->(c:Cell) WHERE c.key IN $cells "
+            "MATCH (po)-[:PRODUCES]->(m:Material) "
+            "RETURN c.key AS cell, po.key AS production_order, op.operation_number AS operation_number, "
+            "po.start_date AS start_date, po.finish_date AS finish_date, m.key AS product "
+            "ORDER BY cell, start_date, production_order",
+            {"cells": sorted(by_cell)})
+        for row in rows:
+            by_cell[row["cell"]]["held_up"].append({k: row[k] for k in row if k != "cell"})
+        if "SalesOrder" in allowed and "BusinessPartner" in allowed:
+            products = sorted({o["product"] for cell in attention for o in cell["held_up"]})
+            waiting = read(
+                "MATCH (cu:BusinessPartner)-[:PLACED]->(so:SalesOrder)-[ci:CONTAINS]->(m:Material) "
+                "WHERE m.key IN $keys AND so.status IN $statuses "
+                "RETURN m.key AS product, so.key AS sales_order, cu.name AS customer, ci.quantity AS quantity "
+                "ORDER BY sales_order", {"keys": products, "statuses": OPEN_ORDER_STATUSES})
+            for cell in attention:
+                for order in cell["held_up"]:
+                    order["open_sales_orders"] = [{k: w[k] for k in w if k != "product"}
+                                                  for w in waiting if w["product"] == order["product"]]
+    return {"plant": plant, "states": summary, "cells": cells, "needs_attention": attention}
+
+
 # --- Supplier dependency -----------------------------------------------------------------------
 
 def supplier_dependency(company_code: str, allowed: set) -> list:
