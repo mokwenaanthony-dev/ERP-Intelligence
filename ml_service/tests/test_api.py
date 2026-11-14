@@ -1,6 +1,8 @@
 """The HTTP layer: token, request IDs, validation errors, logging. Needs FastAPI and httpx (CI installs them)."""
+import importlib
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,23 +16,27 @@ TOKEN = "test-token-at-least-16"
 EXAMPLE = json.loads((Path(__file__).resolve().parents[1] / "contract" / "example_request.json").read_text())
 
 
+def fresh_main():
+    """Import ``app.main`` anew, so it reads ML_SERVICE_TOKEN as set by the test (it reads it at import).
+
+    Tests run in any order: the first one may be the first import, so never rely on a module already
+    loaded by another test.
+    """
+    sys.modules.pop("app.main", None)
+    return importlib.import_module("app.main")
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("ML_SERVICE_TOKEN", TOKEN)
-    import importlib
-
-    from app import main
-    importlib.reload(main)  # read the token set above
-    return TestClient(main.app)
+    return TestClient(fresh_main().app)
 
 
 def test_the_service_refuses_to_start_without_a_token(monkeypatch):
-    monkeypatch.setenv("ML_SERVICE_TOKEN", "short")
-    import importlib
-
-    from app import main
-    with pytest.raises(RuntimeError, match="at least 16 characters"):
-        importlib.reload(main)
+    for bad in ("short", ""):
+        monkeypatch.setenv("ML_SERVICE_TOKEN", bad)
+        with pytest.raises(RuntimeError, match="at least 16 characters"):
+            fresh_main()
 
 
 def test_health_needs_no_token(client):
