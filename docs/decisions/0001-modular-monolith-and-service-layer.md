@@ -16,7 +16,7 @@ so every extra deployable unit adds work without adding value.
 - Every business rule lives in the app's `services.py`. Views, the admin, management commands and
   other modules call the services; they never change business tables directly.
 - A module becomes a separate service only when it has a different runtime profile, such as the
-  planned FastAPI `ml_service` for forecasting.
+  FastAPI `ml_service` for forecasting (built in Wave 8a, ADR 0014).
 
 ## Alternatives considered
 

@@ -19,3 +19,7 @@ STORAGES = {
 
 # WhiteNoise serves collected static files, which tests never need.
 MIDDLEWARE = [m for m in MIDDLEWARE if not m.startswith("whitenoise.")]  # noqa: F405
+
+# Forecasting is off in tests unless a test turns it on (with a fake service, see tests/test_planning.py).
+ML_SERVICE_URL = ""
+ML_SERVICE_TOKEN = "test-token-at-least-16"

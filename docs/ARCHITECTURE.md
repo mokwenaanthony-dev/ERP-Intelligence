@@ -39,6 +39,7 @@ flowchart TB
     KG --> RAG["Knowledge-graph retrieval (KG-RAG) API ✅<br/>(agent integration 🗺️)"]
     KG --> APPS["Customer 360 · document flow ·<br/>supply-chain risk · BOM and digital twin"]
     AN --> BI["BI dashboards"]
+    PP <-- "demand histories → forecasts (8a ✅)" --> ML["ml_service ✅<br/>FastAPI forecasting, stateless"]
 ```
 
 ## Three layers, three jobs
@@ -48,9 +49,11 @@ flowchart TB
 | **System of record** | Every business transaction, with the rules that make the books trustworthy: double entry, gap-free numbering, row locks, immutable documents corrected only by reversal | Django/DRF, PostgreSQL | ✅ Waves 0-3 |
 | **Analytics layer** | Totals over time: P&L and balance sheet by period, margin by customer and material, stock ageing, payroll cost trends | PostgreSQL materialized views (refreshed concurrently by Celery beat), then a column store; BI dashboards | ✅ Waves 4a, 4a+ (Metabase dashboards) |
 | **Knowledge graph** | Relationships: who is connected to what, across modules, at any depth | Neo4j 5.26 LTS fed from the transactional outbox | ✅ Wave 4b |
+| **Predictive service** | What customers will take: monthly demand forecasts per material, with the method and its error | `ml_service`: FastAPI and numpy, stateless, called by the ERP ([ADR 0014](decisions/0014-demand-forecasting-in-a-stateless-ml-service.md)) | ✅ Wave 8a |
 
 The relational core stays the single source of truth. The analytics layer and the knowledge graph are
-**read models**: they are rebuilt from the core and never written to directly. Each answers the kind
+**read models**: they are rebuilt from the core and never written to directly. The predictive service
+keeps nothing: the ERP sends it the histories and stores the forecasts it returns. Each answers the kind
 of question it is best at:
 
 - "What was gross margin per profit centre last quarter?" is an aggregation, so analytics answers it.
@@ -105,7 +108,7 @@ edges, so they can be traversed, visualised and handed to an AI agent as grounde
 - **An explicit ontology.** The graph is a labelled property graph, a recognised kind of knowledge
   graph that does not need RDF or OWL. What makes it a *semantic* layer is that every node type and
   relationship has a defined meaning, key and source: these are written down in
-  [`docs/ONTOLOGY.md`](ONTOLOGY.md) ✅ (version 1.1, versioned with the code), and Neo4j enforces a uniqueness
+  [`docs/ONTOLOGY.md`](ONTOLOGY.md) ✅ (version 1.5 since Wave 7b, versioned with the code), and Neo4j enforces a uniqueness
   constraint on the business key of every label ✅.
 
 ## AI readiness: knowledge-graph retrieval (KG-RAG) (retrieval ✅, agent 🗺️)
@@ -234,7 +237,9 @@ Design rules:
 | 6d ✅ | Live cell state: latest state per cell in the ERP, projected onto the graph's `Cell` nodes; shop-floor query (cells down and the orders they hold up) | Closes the loop between the UNS and the graph |
 | 7a ✅ | CRM: campaigns, leads, opportunities and pipeline, quotations into sales orders, service tickets with SLAs; CRM on the graph and in Customer 360 | Extends sales; enriches Customer 360 |
 | 7b ✅ | SRM: supplier onboarding with due diligence, RFQs awarded as purchase orders, contracts with releases, supplier evaluation and grades; SRM on the graph | Extends purchasing; enriches supplier risk |
-| 8 🔜 | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
+| 8a ✅ | Demand forecasting: demand history from deliveries, stateless FastAPI `ml_service` (methods chosen by backtest, 80 % intervals), numbered forecast runs | Needs sales history; MRP plans against it |
+| 8b 🔜 | MRP: net requirements from forecasts and sales orders, BOM explosion, planned orders and purchase requisitions | Needs forecasts, BOMs, routings and suppliers |
+| 8c 🗺️ | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Needs SRM grades and forecasts |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

@@ -89,3 +89,48 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t erp-system:ci .
+
+  # ml_service (Wave 8a): its own dependencies, tests and image. The last step runs the built image
+  # and checks that it answers the contract's worked example exactly (ADR 0014).
+  ml:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml_service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ml_service/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt flake8 bandit pip-audit
+
+      - name: Lint (flake8)
+        run: flake8 --max-line-length 120 .
+
+      - name: Static security scan (bandit)
+        run: bandit -r app -ll
+
+      - name: Dependency vulnerability audit (pip-audit)
+        run: pip-audit -r requirements.txt
+
+      - name: Tests with coverage floor
+        run: pytest
+
+      - name: Build image
+        run: docker build -t ml-service:ci .
+
+      - name: The image answers the contract example
+        run: |
+          docker run -d --name ml -p 8001:8001 -e ML_SERVICE_TOKEN=ci-only-token-0123456789 ml-service:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:8001/health && break; sleep 1; done
+          curl -sf -X POST http://localhost:8001/v1/forecast \
+            -H "Content-Type: application/json" -H "X-Service-Token: ci-only-token-0123456789" \
+            --data @contract/example_request.json -o answer.json
+          python -c "import json,sys; a=json.load(open('answer.json')); e=json.load(open('contract/example_response.json')); sys.exit(0 if a == e else 'answer differs from contract/example_response.json')"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/v1/forecast --data @contract/example_request.json)" = "401"
+          docker logs ml

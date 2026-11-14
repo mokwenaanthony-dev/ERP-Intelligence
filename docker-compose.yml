@@ -13,6 +13,9 @@ x-app-env: &app-env
   # Unified Namespace bridge (Wave 6): off unless MQTT_URL is set in .env. The broker runs in the
   # MES-Intelligence repository; from these containers it is mqtt://host.docker.internal:1883.
   MQTT_URL: ${MQTT_URL:-}
+  # Demand forecasting (Wave 8a): the ml_service container below. ML_SERVICE_TOKEN comes from .env.
+  ML_SERVICE_URL: http://ml_service:8001
+  ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:-}
 
 services:
   db:
@@ -110,6 +113,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  # Demand forecasting service (Wave 8a, ADR 0014): FastAPI, stateless, no database. The ERP calls it
+  # at http://ml_service:8001; from Windows it is http://localhost:8001 (docs on /docs). It refuses to
+  # start without ML_SERVICE_TOKEN (16+ characters) in .env.
+  ml_service:
+    build: ./ml_service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
   # Knowledge graph (Neo4j Browser on http://localhost:7474, Bolt on 7687), fed from the outbox.
   neo4j:
