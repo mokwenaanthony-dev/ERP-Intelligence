@@ -23,3 +23,4 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0010](0010-idempotency-of-every-state-changing-operation.md) | Every operation that changes data is idempotent (`Idempotency-Key`, event IDs) | Accepted | 5c |
 | [0011](0011-live-cell-state-in-the-erp-and-the-graph.md) | Live cell state: the latest state in the ERP, projected onto the graph | Accepted | 6d |
 | [0012](0012-crm-in-the-monolith-on-the-business-partner.md) | CRM in the monolith, on the Business Partner; quotations become sales orders through the sales services | Accepted | 7a |
+| [0013](0013-srm-on-the-business-partner-and-the-purchasing-services.md) | SRM in the monolith: onboarding creates the Business Partner; awards and releases are purchase orders through the purchasing services | Accepted | 7b |

@@ -88,6 +88,22 @@
     {
       "key": "crm_customer",
       "value": ""
+    },
+    {
+      "key": "application_id",
+      "value": ""
+    },
+    {
+      "key": "new_supplier",
+      "value": ""
+    },
+    {
+      "key": "rfq_id",
+      "value": ""
+    },
+    {
+      "key": "contract_id",
+      "value": ""
     }
   ],
   "item": [
@@ -1768,6 +1784,503 @@
             "body": {
               "mode": "raw",
               "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SRM - onboarding, RFQ, contracts, evaluation (login as purchasing_officer; Wave 7b)",
+      "item": [
+        {
+          "name": "1. Submit supplier application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/applications/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "applications",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"company_name\": \"Karoo Fasteners CC\",\n  \"registration_number\": \"2020/555123/23\",\n  \"vat_number\": \"4777777777\",\n  \"bbbee_level\": 1,\n  \"supplies\": \"Fasteners\",\n  \"contact_name\": \"Demo Contact\",\n  \"email\": \"sales@karoofasteners.example.co.za\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('application_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Approve application (creates the supplier)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/applications/{{application_id}}/approve/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "applications",
+                "{{application_id}}",
+                "approve",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('new_supplier', pm.response.json().business_partner); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Create RFQ (Highveld 1000002 and the new supplier)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchasing_organization\": \"1000\",\n  \"title\": \"Widgets for winter\",\n  \"deadline\": \"2026-12-31\",\n  \"suppliers\": [\n    \"1000002\",\n    \"{{new_supplier}}\"\n  ],\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"quantity\": \"50\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('rfq_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Send RFQ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/{{rfq_id}}/send/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                "{{rfq_id}}",
+                "send",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "5. Record Highveld's quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/{{rfq_id}}/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                "{{rfq_id}}",
+                "quote",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"1000002\",\n  \"prices\": {\n    \"TG-1001\": \"185.00\"\n  },\n  \"delivery_days\": 5,\n  \"submitted_on\": \"2026-11-20\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6. Record the new supplier's quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/{{rfq_id}}/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                "{{rfq_id}}",
+                "quote",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"{{new_supplier}}\",\n  \"prices\": {\n    \"TG-1001\": \"181.00\"\n  },\n  \"delivery_days\": 7,\n  \"submitted_on\": \"2026-11-21\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Compare quotes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/{{rfq_id}}/comparison/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                "{{rfq_id}}",
+                "comparison",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. Award (creates the purchase order)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/rfqs/{{rfq_id}}/award/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "rfqs",
+                "{{rfq_id}}",
+                "award",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"{{new_supplier}}\",\n  \"on\": \"2026-11-22\"\n}"
+            }
+          }
+        },
+        {
+          "name": "9. Create contract with Highveld",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/contracts/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "contracts",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchasing_organization\": \"1000\",\n  \"supplier\": \"1000002\",\n  \"valid_from\": \"2026-11-01\",\n  \"valid_to\": \"2027-02-28\",\n  \"items\": [\n    {\n      \"material\": \"TG-1002\",\n      \"net_price\": \"450.00\",\n      \"target_quantity\": \"100\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('contract_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Release a purchase order against the contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/contracts/{{contract_id}}/release/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "contracts",
+                "{{contract_id}}",
+                "release",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_date\": \"2026-11-22\",\n  \"items\": [\n    {\n      \"material\": \"TG-1002\",\n      \"quantity\": \"10\"\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "11. Evaluate a supplier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/evaluations/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "evaluations",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"supplier\": \"1000002\",\n  \"period_start\": \"2026-03-01\",\n  \"period_end\": \"2026-11-30\",\n  \"quality_score\": 4,\n  \"evaluated_on\": \"2026-11-30\"\n}"
+            }
+          }
+        },
+        {
+          "name": "12. Scorecard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/srm/scorecard/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "srm",
+                "scorecard",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
             }
           }
         }

@@ -294,3 +294,49 @@ def test_customer_360_shows_the_pipeline_and_service_and_flow_starts_at_a_quotat
     flow = queries.document_flow("1000", "QT00000001", labels_for(make_user, Role.SALES_REP))
     assert [d["type"] for d in flow["documents"]] == ["Quotation", "SalesOrder"]
     assert flow["documents"][0]["links"] == [{"type": "ORDERED_AS", "to": f"1000/{won.sales_order.order_number}"}]
+
+
+def test_srm_grades_contracts_and_rfqs_in_the_graph(graph, make_user):
+    """Wave 7b: supplier grades and contracts in supplier dependency and Customer 360; the flow of an
+    RFQ and a contract into their purchase orders."""
+    from datetime import date, timedelta
+
+    from apps.masterdata.models import Material
+    from apps.organization.models import PurchasingOrganization
+    from apps.srm import services
+    from apps.srm.models import SupplierEvaluation
+
+    call_command("setup_demo_srm", stdout=StringIO())
+    org = PurchasingOrganization.objects.get(code="1000")
+    gauteng = BusinessPartner.objects.get(name="Gauteng Components (Pty) Ltd")
+    highveld = BusinessPartner.objects.get(name="Highveld Supplies CC")
+    gadget = Material.objects.get(number="TG-1002")
+    # Dated around today, because "active" in the graph means valid_to >= date() (the real date).
+    services.create_contract(purchasing_organization=org, supplier=gauteng, valid_from=date.today(),
+                             valid_to=date.today() + timedelta(days=365),
+                             items=[services.ContractItemInput(gadget, Decimal("450"), Decimal("100"))])
+    services.send_rfq(services.create_rfq(purchasing_organization=org, title="Open request",
+                                          deadline=date.today() + timedelta(days=7), suppliers=[gauteng, highveld],
+                                          items=[services.RFQItemInput(gadget, Decimal("5"))]))
+    assert processor.process_outbox(limit=100000, store=get_store())["failed"] == 0
+    latest = {e.supplier.name: e.grade for e in SupplierEvaluation.objects.order_by("period_end")}
+
+    buyer = labels_for(make_user, Role.PURCHASING_OFFICER)
+    rows = {row["material"]: row for row in queries.supplier_dependency("1000", buyer)}
+    assert rows["TG-1002"]["on_contract"] is True
+    for row in rows.values():
+        for name, grade in row["supplier_grades"].items():
+            assert grade == latest.get(name)  # the graph agrees with the latest evaluation
+
+    view = queries.customer_360(gauteng.number, buyer)["as_supplier"]
+    assert (view["grade"], view["active_contracts"], view["open_rfqs"]) == (latest[gauteng.name], 1, 1)
+    assert "as_supplier" not in queries.customer_360(gauteng.number, labels_for(make_user, Role.SALES_REP))
+
+    awarded = queries.document_flow("1000", "RQ00000001", buyer)
+    assert [d["type"] for d in awarded["documents"]][:2] == ["RFQ", "PurchaseOrder"]
+    assert awarded["documents"][0]["links"][0]["type"] == "AWARDED_AS"
+    released = queries.document_flow("1000", "CT00000001", buyer)
+    assert released["documents"][0]["type"] == "Contract"
+    assert {link["type"] for link in released["documents"][0]["links"]} == {"RELEASED_AS"}
+    with pytest.raises(PermissionError):
+        queries.document_flow("1000", "RQ00000001", labels_for(make_user, Role.SALES_REP))

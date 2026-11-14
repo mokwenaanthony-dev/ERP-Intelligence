@@ -17,7 +17,9 @@ Sales Rep          sales (orders, customers),  inventory (catalogue lookup)
                    CRM (leads, opportunities,
                    quotations, tickets)
 Inventory Manager  inventory, goods receipts   purchase orders
-Purchasing Officer purchasing, goods receipts  inventory, supplier invoices
+Purchasing Officer purchasing, goods receipts, inventory, supplier invoices
+                   SRM (onboarding, RFQs,
+                   contracts, evaluations)
 HR Admin           hr                          -
 Production Planner production master data     cost estimates, all master data
 Viewer             -                           sales, inventory, purchasing
@@ -65,6 +67,13 @@ SalesPermission = RolePermission.build(
     "SalesPermission",
     write=(Role.SALES_REP,),
     read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.VIEWER),
+)
+
+# SRM (Wave 7b): purchasing works it; finance, the warehouse and viewers read it.
+SRMPermission = RolePermission.build(
+    "SRMPermission",
+    write=(Role.PURCHASING_OFFICER,),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER, Role.VIEWER),
 )
 
 # CRM (Wave 7a): the sales team works it; finance and viewers read the pipeline and tickets.

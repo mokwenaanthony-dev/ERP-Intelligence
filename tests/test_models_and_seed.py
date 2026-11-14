@@ -28,7 +28,8 @@ def test_seed_data_creates_every_role_and_the_demo_company_and_is_repeatable():
     assert User.objects.get(username="admin").is_superuser
     assert CompanyCode.objects.count() == 1
     # Demo company: capital, invoice, opening stock. Demo production: opening stock of raw materials.
-    assert JournalEntry.objects.count() == 4
-    assert MaterialDocument.objects.count() == 2
+    # Demo SRM: two goods receipts (the awarded RFQ and the contract release) and one supplier invoice.
+    assert JournalEntry.objects.count() == 4 + 3
+    assert MaterialDocument.objects.count() == 2 + 2
     assert SalesPrice.objects.count() == 3  # TG-1001, TG-1002 and FG-4001
     assert WorkCenter.objects.count() == 2 and BillOfMaterials.objects.count() == 2
