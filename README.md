@@ -62,8 +62,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 6c | Rust edge agent (standard library only) driving a simulated PLC over Modbus TCP; the MES dispatches jobs to it and confirms them here with measured machine hours | Done (MES `v0.2.0`) |
 | 6d | Live cell state: the ERP keeps each cell's latest state from the shop floor, shows it in the equipment tree and on the graph's cells, and answers "which cells are down and which orders do they hold up?" | Done |
 | 7a | CRM: campaigns, leads (converted into customers and opportunities), a weighted pipeline, quotations accepted into sales orders at the quoted price, service tickets with SLA due times, activities; campaign return; CRM on the knowledge graph without personal data | Done |
-| 7b | SRM: supplier onboarding, requests for quotation, contracts, supplier evaluation | Next |
-| 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
+| 7b | SRM: supplier onboarding with due diligence (registration, VAT, B-BBEE), requests for quotation compared side by side and awarded as purchase orders, contracts released up to their target quantity, supplier evaluation from real receipts and invoices (grade A-D); SRM on the knowledge graph | Done |
+| 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Next |
 | 9 | PLM and digital twin | Planned |
 
 ## What Wave 0 delivers
@@ -251,6 +251,25 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 7b delivers
+
+```
+Supplier application --(due diligence: registration, VAT number)--> approve --> Business Partner (supplier role)
+Request for quotation --send--> invited suppliers quote --> comparison --award--> Purchase order (quoted prices)
+Contract (price per material, target quantity, validity) --release--> Purchase order (contract prices, up to target)
+Goods receipts + supplier invoices + quality score --> evaluation --> score and grade A-D --> scorecard, graph
+```
+
+| Area | What exists |
+|---|---|
+| Onboarding | Applications numbered OB, with registration number, VAT number, B-BBEE level 1-8 and what the company supplies. Approval needs the registration and VAT numbers and creates a business partner with a supplier role (payables account 2000), or reuses the partner with the same VAT number; rejection keeps its reason |
+| Requests for quotation | Numbered RQ, at least two invited suppliers, one line per material. Suppliers' quotes are recorded until the deadline (a price for every item; an unchanged resubmission writes nothing, a revision replaces the prices). `comparison` ranks the quotes and shows the lowest price per item. Awarding creates the purchase order through the purchasing services **at the quoted prices**, delivery date from the quoted delivery time; the other quotes are LOST. Awarding twice returns the same order |
+| Contracts | Numbered CT: agreed price per material up to a target quantity, valid from/to. Releases become purchase orders at the contract price (supplier reference = contract number), only inside the validity and never beyond the target; a cancelled order gives its quantity back |
+| Evaluation | On time, in full and at the agreed price, measured from posted goods receipts and invoices in the period, plus a quality score 1-5; weights 40/20/20/20, missing measures re-weighted; grade A (≥ 90), B (≥ 75), C (≥ 60), D. One row per supplier and period. `scorecard` lists every supplier with its latest grade |
+| Personal data | The applicant's contact name, e-mail and phone are shown only to purchasing and administrators, never logged and never projected into the graph ([ADR 0013](docs/decisions/0013-srm-on-the-business-partner-and-the-purchasing-services.md)) |
+| Knowledge graph (ontology 1.5) | `RFQ` and `Contract` nodes; document flow starts at an RFQ or a contract; supplier dependency shows each source's grade and whether a contract covers the material; Customer 360 shows a supplier's grade, active contracts and open RFQs |
+| Demo | `python manage.py setup_demo_srm`: Gauteng Components onboarded (B-BBEE level 2), one application rejected, RQ00000001 won by Gauteng on price and received on time, contract CT00000001 with Highveld with a late release, both suppliers evaluated |
+
 ## What Wave 7a delivers
 
 ```
@@ -426,10 +445,10 @@ Management reports (API): income statement · balance sheet · sales margin · s
 | Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners, CRM (campaigns, leads, opportunities, quotations, tickets, activities) | inventory |
 | Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders | deliveries, purchase orders, production orders |
-| Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
+| Purchasing Officer | purchase orders, goods receipts, business partners, materials, SRM (supplier applications, RFQs and quotes, contracts and releases, evaluations) | inventory, supplier invoices, GR/IR report |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
 | Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete) | cost estimates, all master data |
-| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details) |
+| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details), SRM (without applicant contact details) |
 | Administrator / superuser | everything, including organisation structure | - |
 
 Every signed-in user can read organisation structure and master data, including cost and profit centres.
@@ -493,6 +512,15 @@ Employee records and salaries are visible to HR only.
 | POST | `/api/crm/tickets/<id>/start/`, `/resolve/`, `/close/`, `/reopen/` | resolve `{"resolution"}` |
 | GET, POST | `/api/crm/activities/` | `?open=true`; POST `{"company_code", "kind", "subject", "due_date", "lead" or "opportunity" or "ticket"}`; `/<id>/complete/` `{"on"}` |
 | GET | `/api/crm/pipeline/`, `/api/crm/campaign-performance/`, `/api/crm/overdue-tickets/` | `?company_code=` |
+| GET, POST | `/api/srm/applications/` | `?status=`; POST `{"company_code", "company_name"[, "registration_number", "vat_number", "bbbee_level", "supplies", "contact_name", "email", "phone"]}` |
+| POST | `/api/srm/applications/<id>/approve/`, `/reject/` | reject `{"reason"}`; approve returns the new `business_partner` |
+| GET, POST | `/api/srm/rfqs/` | `?status=`; POST `{"purchasing_organization", "title", "deadline", "suppliers": [numbers], "items": [{"material", "quantity"}]}` |
+| POST | `/api/srm/rfqs/<id>/send/`, `/quote/`, `/award/`, `/cancel/` | quote `{"supplier", "prices": {"TG-1001": "185.00"}, "delivery_days", "submitted_on"[, "supplier_reference"]}`; award `{"supplier", "on"}` creates the purchase order |
+| GET | `/api/srm/rfqs/<id>/comparison/` | Quotes ranked by total, lowest price per item |
+| GET, POST | `/api/srm/contracts/` | `?status=&supplier=`; POST `{"purchasing_organization", "supplier", "valid_from", "valid_to", "items": [{"material", "net_price", "target_quantity"}]}` |
+| POST | `/api/srm/contracts/<id>/release/`, `/cancel/` | release `{"order_date", "items": [{"material", "quantity"}][, "delivery_date"]}` returns `{"purchase_order", "contract", "net_total"}` |
+| GET, POST | `/api/srm/evaluations/` | `?supplier=&grade=`; POST `{"company_code", "supplier", "period_start", "period_end", "quality_score", "evaluated_on"}` |
+| GET | `/api/srm/scorecard/` | `?company_code=`: every supplier with its latest grade |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |

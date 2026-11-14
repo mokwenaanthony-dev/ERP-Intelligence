@@ -1,6 +1,6 @@
 # Knowledge graph ontology
 
-**Version 1.4** (Wave 7a: CRM). 1.3 added live cell state (Wave 6d); 1.2 production orders (Wave 5b);
+**Version 1.5** (Wave 7b: SRM). 1.4 added CRM (Wave 7a); 1.3 live cell state (Wave 6d); 1.2 production orders (Wave 5b);
 1.1 the equipment hierarchy, BOMs and routings (Wave 5a); 1.0 was Wave 4b.
 
 This document defines what every node type and relationship in the knowledge graph means, how it is
@@ -162,13 +162,35 @@ and a lead is not a customer yet), and the free text of tickets (description, re
 name people ([ADR 0012](decisions/0012-crm-in-the-monolith-on-the-business-partner.md)). Opportunities,
 quotations, tickets and campaigns are visible to the roles that see sales.
 
+## SRM — new in 1.5
+
+| Label | Key | Properties | Source |
+|---|---|---|---|
+| `RFQ` | `1000/RQ00000001` | number, title, deadline, status | `srm.RequestForQuotation` |
+| `Contract` | `1000/CT00000001` | number, status, valid_from, valid_to | `srm.Contract` |
+| `BusinessPartner` (supplier) | `1000002` | adds supplier_grade, supplier_score, supplier_evaluated_to (the latest evaluation) | `srm.SupplierEvaluation` |
+
+| Relationship | Properties | Meaning |
+|---|---|---|
+| `(RFQ)-[:REQUESTS]->(Material)` | item_number, quantity | What was asked for |
+| `(RFQ)-[:INVITED]->(BusinessPartner)` | status, delivery_days, total | Each supplier asked, with its quote (INVITED, SUBMITTED, AWARDED, LOST) |
+| `(RFQ)-[:AWARDED_AS]->(PurchaseOrder)` | | The order it became (part of the document flow) |
+| `(Contract)-[:WITH]->(BusinessPartner)` | | The supplier |
+| `(Contract)-[:COVERS]->(Material)` | net_price, target_quantity | The agreed price and how much may be bought at it |
+| `(Contract)-[:RELEASED_AS]->(PurchaseOrder)` | | Each order released against it (part of the document flow) |
+
+**Not in the graph:** supplier applications (the applicant's contact details are personal data, and an
+applicant is not a supplier yet) and the history of evaluations (only the latest grade)
+([ADR 0013](decisions/0013-srm-on-the-business-partner-and-the-purchasing-services.md)). RFQs and
+contracts are visible to the roles that see purchasing.
+
 ## Queries built on this ontology
 
 | Endpoint | Question |
 |---|---|
-| `/api/graph/customer-360/<number>/` | Everything about a business partner; since 1.4 its pipeline and open and overdue tickets |
-| `/api/graph/document-flow/` | Quotation → order → delivery → invoice → payment (and the purchasing chain) |
-| `/api/graph/supplier-dependency/` | Single-source materials and the customers that depend on them |
+| `/api/graph/customer-360/<number>/` | Everything about a business partner; since 1.4 its pipeline and open and overdue tickets; since 1.5, for a supplier, its grade, active contracts and open RFQs |
+| `/api/graph/document-flow/` | Quotation → order → delivery → invoice → payment, and RFQ or contract → purchase order → receipt → supplier invoice |
+| `/api/graph/supplier-dependency/` | Single-source materials, their suppliers' grades, whether a contract covers them (1.5), and the customers that depend on them |
 | `/api/graph/where-used/<material>/` | Products that use a material at any BOM level, their open sales orders, and open production orders that need it (1.1, orders in 1.2) |
 | `/api/graph/shop-floor/?plant=` | Every cell's live state; for cells DOWN or OFFLINE, the released production orders and open sales orders they hold up (1.3) |
 | `/api/graph/context/` | KG-RAG: a node's neighbourhood as grounded facts for an AI agent |

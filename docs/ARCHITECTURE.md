@@ -233,8 +233,8 @@ Design rules:
 | 6c ✅ | Rust edge agent (MES v0.2.0): standard library only, Modbus TCP to a simulated PLC; MES dispatching, confirmations with measured hours | A real machine's data, same topics |
 | 6d ✅ | Live cell state: latest state per cell in the ERP, projected onto the graph's `Cell` nodes; shop-floor query (cells down and the orders they hold up) | Closes the loop between the UNS and the graph |
 | 7a ✅ | CRM: campaigns, leads, opportunities and pipeline, quotations into sales orders, service tickets with SLAs; CRM on the graph and in Customer 360 | Extends sales; enriches Customer 360 |
-| 7b 🔜 | SRM: supplier onboarding, requests for quotation, contracts, supplier evaluation | Extends purchasing; enriches supplier risk |
-| 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
+| 7b ✅ | SRM: supplier onboarding with due diligence, RFQs awarded as purchase orders, contracts with releases, supplier evaluation and grades; SRM on the graph | Extends purchasing; enriches supplier risk |
+| 8 🔜 | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

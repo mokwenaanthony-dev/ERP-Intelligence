@@ -7,8 +7,11 @@ reads from it.
 from .projection import DOCUMENT_LABELS
 from .store import _name, get_store
 
-FLOW = "ORDERED_AS|DELIVERED_BY|BILLED_BY|PAID_BY|RECEIVED_BY"  # ORDERED_AS: quotation -> sales order (7a)
-PREFIX_LABELS = {"QT": "Quotation", "SO": "SalesOrder", "DL": "Delivery", "IN": "Invoice", "PO": "PurchaseOrder",
+# ORDERED_AS: quotation -> sales order (7a); AWARDED_AS: RFQ -> purchase order, RELEASED_AS: contract ->
+# purchase order (7b)
+FLOW = "ORDERED_AS|AWARDED_AS|RELEASED_AS|DELIVERED_BY|BILLED_BY|PAID_BY|RECEIVED_BY"
+PREFIX_LABELS = {"QT": "Quotation", "RQ": "RFQ", "CT": "Contract", "SO": "SalesOrder", "DL": "Delivery",
+                 "IN": "Invoice", "PO": "PurchaseOrder",
                  "GR": "GoodsReceipt", "IV": "SupplierInvoice", "DZ": "Payment", "KZ": "Payment"}
 PARTNER_LINKS = ("PLACED|BILLED_TO|PAID|PAID_TO|ORDERED_FROM|BILLED_BY_SUPPLIER|DELIVERED_BY|BILLED_BY|RECEIVED_BY|"
                  "QUOTED_TO|RAISED")
@@ -100,6 +103,15 @@ def customer_360(number: str, allowed: set) -> dict | None:
         result["as_supplier"] = {"materials": sorted(supplier["materials"]),
                                  "purchase_orders": supplier["purchase_orders"],
                                  "purchased": _money(supplier["purchased"])}
+        if "Contract" in allowed:  # SRM (Wave 7b): the relationship with this supplier
+            [srm] = read("MATCH (bp:BusinessPartner {key: $key}) "
+                         "OPTIONAL MATCH (k:Contract {status: 'ACTIVE'})-[:WITH]->(bp) WHERE k.valid_to >= date() "
+                         "WITH bp, count(DISTINCT k) AS contracts "
+                         "OPTIONAL MATCH (r:RFQ {status: 'SENT'})-[:INVITED]->(bp) "
+                         "RETURN bp.supplier_grade AS grade, bp.supplier_score AS score, contracts, "
+                         "count(DISTINCT r) AS open_rfqs", {"key": number})
+            result["as_supplier"].update({"grade": srm["grade"], "score": srm["score"],
+                                          "active_contracts": srm["contracts"], "open_rfqs": srm["open_rfqs"]})
     result["recent_documents"] = [
         {"type": _type(row["document"], allowed), "key": row["document"]["key"],
          "date": row["document"].get("date"), "status": row["document"].get("status")}
@@ -117,7 +129,8 @@ def document_flow(company_code: str, number: str, allowed: set) -> dict | None:
     """Everything before and after one document in its process chain, like SAP's document flow."""
     label = PREFIX_LABELS.get(number[:2].upper())
     if label is None:
-        raise ValueError(f"Unknown document type in {number!r}: use QT, SO, DL, IN, PO, GR, IV, DZ or KZ numbers.")
+        raise ValueError(f"Unknown document type in {number!r}: use QT, SO, DL, IN, RQ, CT, PO, GR, IV, DZ or KZ "
+                         "numbers.")
     if label not in allowed:
         raise PermissionError(label)
     if label == "Payment":
@@ -261,21 +274,32 @@ def shop_floor(plant: str, allowed: set) -> dict:
 # --- Supplier dependency -----------------------------------------------------------------------
 
 def supplier_dependency(company_code: str, allowed: set) -> list:
-    """Per material: how many suppliers it has and which customers' sales depend on it."""
+    """Per material: how many suppliers it has, their latest grades (7b), whether an active contract
+    covers it (7b), and which customers' sales depend on it.
+
+    Together these answer "where are we exposed?": a single-source material, with no contract and a
+    poorly graded supplier, that customers are buying, is a supply risk.
+    """
     rows = get_store().read(
         "MATCH (s:BusinessPartner)-[:SUPPLIER_OF]->(:CompanyCode {key: $company}) "
         "MATCH (s)-[:SUPPLIES]->(m:Material) "
-        "WITH m, collect(DISTINCT s.name) AS suppliers "
+        "WITH m, collect(DISTINCT s) AS sources "
+        "OPTIONAL MATCH (k:Contract {status: 'ACTIVE'})-[:COVERS]->(m) "
+        "WHERE k.key STARTS WITH $company + '/' AND k.valid_to >= date() "
+        "WITH m, sources, count(DISTINCT k) AS contracts "
         "OPTIONAL MATCH (c:BusinessPartner)-[:PLACED]->(so:SalesOrder)-[ci:CONTAINS]->(m) "
         "WHERE so.status <> 'CANCELLED' AND so.key STARTS WITH $company + '/' "
-        "WITH m, suppliers, collect(DISTINCT c.name) AS customers, sum(ci.quantity * ci.net_price) AS sales "
-        "RETURN m.key AS material, m.description AS description, suppliers, size(suppliers) AS supplier_count, "
+        "WITH m, sources, contracts, collect(DISTINCT c.name) AS customers, sum(ci.quantity * ci.net_price) AS sales "
+        "RETURN m.key AS material, m.description AS description, [s IN sources | s.name] AS suppliers, "
+        "[s IN sources | [s.name, s.supplier_grade]] AS grades, size(sources) AS supplier_count, contracts, "
         "customers, sales ORDER BY supplier_count, sales DESC",
         {"company": company_code})
     show_customers = "SalesOrder" in allowed
     return [{
         "material": row["material"], "description": row["description"], "suppliers": sorted(row["suppliers"]),
         "supplier_count": row["supplier_count"], "single_source": row["supplier_count"] == 1,
+        "supplier_grades": {name: grade for name, grade in sorted(row["grades"])},
+        "on_contract": row["contracts"] > 0,
         **({"customers": sorted(row["customers"]), "sales_value": _money(row["sales"])} if show_customers else {}),
     } for row in rows]
 

@@ -1,4 +1,4 @@
-"""Ontology v1 (version 1.4): how ERP records become nodes and relationships.
+"""Ontology v1 (version 1.5): how ERP records become nodes and relationships.
 
 Every projector reads the *current* state of one record and writes it with idempotent MERGEs, so
 events can be processed more than once or out of order and the graph still ends up correct; the
@@ -21,6 +21,9 @@ graph without mapping tables.
     (:Opportunity)-[:QUOTED_IN]->(:Quotation)-[:ORDERED_AS]->(:SalesOrder)
     (:Quotation)-[:QUOTED_TO]->(:BusinessPartner)
     (:BusinessPartner)-[:RAISED]->(:ServiceTicket)-[:ABOUT]->(:SalesOrder | :Material)
+    (:RFQ)-[:REQUESTS]->(:Material), (:RFQ)-[:INVITED]->(:BusinessPartner), (:RFQ)-[:AWARDED_AS]->(:PurchaseOrder)
+    (:Contract)-[:WITH]->(:BusinessPartner), (:Contract)-[:COVERS]->(:Material)
+    (:Contract)-[:RELEASED_AS]->(:PurchaseOrder)
 
 Since 1.3 (Wave 6d) a ``Cell`` also carries its live state from the shop floor (``state``,
 ``state_since``, ``state_order``, ``state_operation``, ``state_reported_at``) and, while running, a
@@ -35,15 +38,20 @@ Leads are not: they hold a contact's personal data and are not customers yet (AD
 descriptions and resolutions stay out as well (free text that may name people); a ticket carries its
 number, subject, priority, status and times.
 
+Since 1.5 (Wave 7b, SRM) requests for quotation and contracts are nodes, and a supplier's
+``BusinessPartner`` node carries its latest evaluation (``supplier_grade``, ``supplier_score``,
+``supplier_evaluated_to``). Supplier applications are not projected: they hold an applicant's
+personal data and the company is not a supplier yet (ADR 0013).
+
 Pay data never enters the graph: employees carry name, dates and position only.
 """
 from django.apps import apps
 
-DOCUMENT_LABELS = ["Quotation", "SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice",
-                   "Payment", "ProductionOrder", "Opportunity", "ServiceTicket"]
+DOCUMENT_LABELS = ["Quotation", "SalesOrder", "Delivery", "Invoice", "RFQ", "Contract", "PurchaseOrder",
+                   "GoodsReceipt", "SupplierInvoice", "Payment", "ProductionOrder", "Opportunity", "ServiceTicket"]
 MASTER_LABELS = ["CompanyCode", "BusinessPartner", "Material", "Plant", "ProfitCenter", "CostCenter", "OrgUnit",
                  "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing", "Campaign"]
-ONTOLOGY_VERSION = "1.4"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
+ONTOLOGY_VERSION = "1.5"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
 ALL_LABELS = MASTER_LABELS + DOCUMENT_LABELS
 
 
@@ -439,6 +447,55 @@ def service_ticket(g, t):
         g.edge("ServiceTicket", key, "ABOUT", "Material", t.material.number)
 
 
+# --- SRM (Wave 7b) -----------------------------------------------------------------------------
+
+def rfq(g, r):
+    """``RFQ`` node: REQUESTS its materials, INVITED each supplier (with the quote's status and
+    total), AWARDED_AS the purchase order it became."""
+    from apps.srm.services import quote_total
+
+    key = _doc_key(r, "rfq_number")
+    g.node("RFQ", key, {"number": r.rfq_number, "title": r.title, "deadline": r.deadline, "status": r.status})
+    for rel in ("REQUESTS", "INVITED", "AWARDED_AS"):
+        g.clear_edges("RFQ", key, rel)
+    for item in r.items.select_related("material"):
+        g.edge("RFQ", key, "REQUESTS", "Material", item.material.number, {"quantity": item.quantity},
+               merge_on={"item_number": item.item_number})
+    for quote in r.quotes.select_related("supplier"):
+        g.edge("RFQ", key, "INVITED", "BusinessPartner", quote.supplier.number,
+               {"status": quote.status, "delivery_days": quote.delivery_days,
+                "total": quote_total(quote) if quote.status != "INVITED" else None})
+    if r.purchase_order_id:
+        g.edge("RFQ", key, "AWARDED_AS", "PurchaseOrder", _doc_key(r.purchase_order, "order_number"))
+
+
+def contract(g, c):
+    """``Contract`` node: WITH its supplier, COVERS its materials at the agreed price, RELEASED_AS
+    each purchase order released against it."""
+    key = _doc_key(c, "contract_number")
+    g.node("Contract", key, {"number": c.contract_number, "status": c.status, "valid_from": c.valid_from,
+                             "valid_to": c.valid_to})
+    for rel in ("WITH", "COVERS", "RELEASED_AS"):
+        g.clear_edges("Contract", key, rel)
+    g.edge("Contract", key, "WITH", "BusinessPartner", c.supplier.number)
+    for item in c.items.select_related("material"):
+        g.edge("Contract", key, "COVERS", "Material", item.material.number,
+               {"net_price": item.net_price, "target_quantity": item.target_quantity})
+    for release in c.releases.select_related("purchase_order"):
+        g.edge("Contract", key, "RELEASED_AS", "PurchaseOrder", _doc_key(release.purchase_order, "order_number"))
+
+
+def supplier_evaluation(g, e):
+    """The supplier's latest grade and score, as properties of its ``BusinessPartner`` node."""
+    from apps.srm.models import SupplierEvaluation
+
+    latest = SupplierEvaluation.objects.filter(supplier=e.supplier).order_by("-period_end").first()
+    g.node("BusinessPartner", e.supplier.number, {
+        "supplier_grade": latest.grade if latest else None,
+        "supplier_score": latest.overall_score if latest else None,
+        "supplier_evaluated_to": latest.period_end if latest else None})
+
+
 # "app_label.model" -> (projector, label and key of the node it owns, for deletions; None = no own node)
 PROJECTORS = {
     "organization.companycode": (company_code, lambda o: ("CompanyCode", o.code)),
@@ -471,6 +528,11 @@ PROJECTORS = {
     "crm.opportunity": (opportunity, lambda o: ("Opportunity", _doc_key(o, "opportunity_number"))),
     "crm.quotation": (quotation, lambda o: ("Quotation", _doc_key(o, "quotation_number"))),
     "crm.serviceticket": (service_ticket, lambda o: ("ServiceTicket", _doc_key(o, "ticket_number"))),
+    "srm.requestforquotation": (rfq, lambda o: ("RFQ", _doc_key(o, "rfq_number"))),
+    "srm.supplierquote": (lambda g, q: rfq(g, q.rfq), None),  # onto its RFQ
+    "srm.contract": (contract, lambda o: ("Contract", _doc_key(o, "contract_number"))),
+    "srm.contractrelease": (lambda g, r: contract(g, r.contract), None),  # onto its contract
+    "srm.supplierevaluation": (supplier_evaluation, None),  # onto the supplier's node
 }
 
 
@@ -503,7 +565,7 @@ def rebuild(g, batch_size=200) -> int:
     count = 0
     for aggregate_type, (projector, _) in PROJECTORS.items():
         if aggregate_type in ("masterdata.customerrole", "masterdata.supplierrole", "controlling.plantprofitcenter",
-                              "production.cellstate"):
+                              "production.cellstate", "srm.supplierquote", "srm.contractrelease"):
             continue  # projected through their business partner, plant or work centre
         model = apps.get_model(aggregate_type)
         queryset = model.objects.all()
