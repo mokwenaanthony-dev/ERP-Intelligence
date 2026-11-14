@@ -61,7 +61,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 6b | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (own repository): Python MES on contract v1, store-and-forward, machine simulator, Mosquitto broker | Done (MES `v0.1.0`) |
 | 6c | Rust edge agent (standard library only) driving a simulated PLC over Modbus TCP; the MES dispatches jobs to it and confirms them here with measured machine hours | Done (MES `v0.2.0`) |
 | 6d | Live cell state: the ERP keeps each cell's latest state from the shop floor, shows it in the equipment tree and on the graph's cells, and answers "which cells are down and which orders do they hold up?" | Done |
-| 7 | CRM and SRM | Planned |
+| 7a | CRM: campaigns, leads (converted into customers and opportunities), a weighted pipeline, quotations accepted into sales orders at the quoted price, service tickets with SLA due times, activities; campaign return; CRM on the knowledge graph without personal data | Done |
+| 7b | SRM: supplier onboarding, requests for quotation, contracts, supplier evaluation | Next |
 | 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Planned |
 | 9 | PLM and digital twin | Planned |
 
@@ -250,6 +251,28 @@ Result for the three demo employees: run `PR00000001`, journal entry `PY00000001
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
 
+## What Wave 7a delivers
+
+```
+Campaign --> Lead --(qualify, convert)--> Business Partner (customer role) + Opportunity
+                                          Opportunity: PROSPECTING > QUALIFICATION > PROPOSAL > NEGOTIATION
+                                                       > WON (quotation accepted) | LOST (with a reason)
+             Quotation (price list or negotiated) --send--> --accept--> Sales order (apps.sales), quoted prices
+Customer --> Service ticket (priority sets the due time: URGENT 4 h, HIGH 8 h, MEDIUM 24 h, LOW 72 h)
+```
+
+| Area | What exists |
+|---|---|
+| Leads | Numbered LD, with source and campaign. Qualify, disqualify (with a reason) or convert: a new business partner with a customer role (receivables account 1100), or an existing partner, plus an opportunity. Converting twice returns the first opportunity |
+| Opportunities | Numbered OP, stages with default win probabilities (10, 25, 50, 75 %), moved forwards or back; sending a quotation moves the deal to PROPOSAL and sets its value; lost with a reason (its open quotations are rejected) |
+| Quotations | Numbered QT, priced from the price list or at a negotiated price, valid until a date. Accepting a sent, unexpired quotation creates the sales order through the sales services **at the quoted prices** (even if the price list changed), wins the opportunity and rejects its other offers. Accepting twice returns the same sales order |
+| Service tickets | Numbered ST, priority sets the due time (SLA); start, resolve (with what was done), reopen, close; about a sales order or a material. `overdue-tickets` lists the late ones |
+| Activities | Calls, meetings, e-mails and tasks about exactly one lead, opportunity or ticket (a database constraint) |
+| Reports | `pipeline` (by stage: count, value, weighted value; forecast by close month; win rate) and `campaign-performance` (leads, conversions, won value, return on budget) |
+| Personal data | Lead contact names, e-mails and phones are shown only to the sales team and administrators, never logged and never projected into the graph ([ADR 0012](docs/decisions/0012-crm-in-the-monolith-on-the-business-partner.md)) |
+| Knowledge graph (ontology 1.4) | `Campaign`, `Opportunity`, `Quotation`, `ServiceTicket` nodes; document flow starts at a quotation (`QT...` then the sales order); Customer 360 adds the pipeline and open and overdue tickets, for roles that may see sales |
+| Demo | `python manage.py setup_demo_crm`: 2 campaigns, 4 leads, a won deal from the expo (quotation QT00000001 accepted as a sales order), a lost one, an open negotiation with Acme, 2 tickets (one urgent and overdue) |
+
 ## What Wave 6d delivers
 
 ```
@@ -401,12 +424,12 @@ Management reports (API): income statement · balance sheet · sales margin · s
 |---|---|---|
 | Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, completing (settling) production orders, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
 | Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
-| Sales Representative | sales orders, prices, deliveries, invoices, business partners | inventory |
+| Sales Representative | sales orders, prices, deliveries, invoices, business partners, CRM (campaigns, leads, opportunities, quotations, tickets, activities) | inventory |
 | Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders | deliveries, purchase orders, production orders |
 | Purchasing Officer | purchase orders, goods receipts, business partners, materials | inventory, supplier invoices, GR/IR report |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
 | Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete) | cost estimates, all master data |
-| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices |
+| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details) |
 | Administrator / superuser | everything, including organisation structure | - |
 
 Every signed-in user can read organisation structure and master data, including cost and profit centres.
@@ -459,6 +482,17 @@ Employee records and salaries are visible to HR only.
 | GET, POST | `/api/production/orders/<id>/confirmations/` | `{"posting_date", "operation_number", "yield_quantity"[, "activities": {"LAB": "26"}, "final", "external_id"]}` |
 | POST | `/api/production/orders/<id>/receive/` | `{"posting_date", "quantity"}`: movement 101 from the order |
 | GET | `/api/production/orders/<id>/costs/` | Planned against actual, variance |
+| CRUD | `/api/crm/campaigns/` | `?company_code=` |
+| GET, POST | `/api/crm/leads/` | `?status=&campaign=`; POST `{"company_code", "company_name"[, "contact_name", "email", "phone", "source", "campaign"]}` |
+| POST | `/api/crm/leads/<id>/qualify/`, `/disqualify/`, `/convert/` | disqualify `{"reason"}`; convert `{"expected_close_date"[, "expected_value", "title", "customer"]}` returns the opportunity |
+| GET, POST | `/api/crm/opportunities/` | `?stage=&customer=`; POST `{"company_code", "customer", "title", "expected_close_date"[, "expected_value", "stage", "campaign"]}` |
+| POST | `/api/crm/opportunities/<id>/move/`, `/lose/` | move `{"stage"[, "probability"]}`; lose `{"reason", "on"}` |
+| GET, POST | `/api/crm/quotations/` | POST `{"sales_organization", "customer", "quotation_date", "valid_until", "items": [{"material", "quantity"[, "net_price"]}][, "opportunity"]}` |
+| POST | `/api/crm/quotations/<id>/send/`, `/accept/`, `/reject/` | accept `{"on"}` creates the sales order |
+| GET, POST | `/api/crm/tickets/` | `?status=&priority=&customer=`; POST `{"company_code", "customer", "subject"[, "priority", "description", "sales_order", "material"]}` |
+| POST | `/api/crm/tickets/<id>/start/`, `/resolve/`, `/close/`, `/reopen/` | resolve `{"resolution"}` |
+| GET, POST | `/api/crm/activities/` | `?open=true`; POST `{"company_code", "kind", "subject", "due_date", "lead" or "opportunity" or "ticket"}`; `/<id>/complete/` `{"on"}` |
+| GET | `/api/crm/pipeline/`, `/api/crm/campaign-performance/`, `/api/crm/overdue-tickets/` | `?company_code=` |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |

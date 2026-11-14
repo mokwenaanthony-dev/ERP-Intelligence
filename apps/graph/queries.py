@@ -7,10 +7,14 @@ reads from it.
 from .projection import DOCUMENT_LABELS
 from .store import _name, get_store
 
-FLOW = "DELIVERED_BY|BILLED_BY|PAID_BY|RECEIVED_BY"
-PREFIX_LABELS = {"SO": "SalesOrder", "DL": "Delivery", "IN": "Invoice", "PO": "PurchaseOrder",
+FLOW = "ORDERED_AS|DELIVERED_BY|BILLED_BY|PAID_BY|RECEIVED_BY"  # ORDERED_AS: quotation -> sales order (7a)
+PREFIX_LABELS = {"QT": "Quotation", "SO": "SalesOrder", "DL": "Delivery", "IN": "Invoice", "PO": "PurchaseOrder",
                  "GR": "GoodsReceipt", "IV": "SupplierInvoice", "DZ": "Payment", "KZ": "Payment"}
-PARTNER_LINKS = "PLACED|BILLED_TO|PAID|PAID_TO|ORDERED_FROM|BILLED_BY_SUPPLIER|DELIVERED_BY|BILLED_BY|RECEIVED_BY"
+PARTNER_LINKS = ("PLACED|BILLED_TO|PAID|PAID_TO|ORDERED_FROM|BILLED_BY_SUPPLIER|DELIVERED_BY|BILLED_BY|RECEIVED_BY|"
+                 "QUOTED_TO|RAISED")
+
+
+OPEN_STAGES = ["PROSPECTING", "QUALIFICATION", "PROPOSAL", "NEGOTIATION"]  # crm.Opportunity.OPEN_STAGES
 
 
 def _money(value):
@@ -65,6 +69,27 @@ def customer_360(number: str, allowed: set) -> dict | None:
                         "RETURN m.key AS material, m.description AS description, sum(c.quantity) AS quantity, "
                         "sum(c.quantity * c.net_price) AS revenue ORDER BY revenue DESC LIMIT 5", {"key": number})
     ]
+    if "Opportunity" in allowed:  # CRM (Wave 7a): the pipeline with this customer
+        [pipeline] = read(
+            "MATCH (bp:BusinessPartner {key: $key}) OPTIONAL MATCH (bp)-[:HAS_OPPORTUNITY]->(o:Opportunity) "
+            "RETURN count(CASE WHEN o.stage IN $open THEN 1 END) AS open_opportunities, "
+            "sum(CASE WHEN o.stage IN $open THEN o.expected_value ELSE 0 END) AS pipeline_value, "
+            "sum(CASE WHEN o.stage IN $open THEN o.expected_value * o.probability / 100.0 ELSE 0 END) AS weighted, "
+            "count(CASE WHEN o.stage = 'WON' THEN 1 END) AS won, "
+            "sum(CASE WHEN o.stage = 'WON' THEN o.expected_value ELSE 0 END) AS won_value",
+            {"key": number, "open": OPEN_STAGES})
+        result["pipeline"] = {"open_opportunities": pipeline["open_opportunities"],
+                              "pipeline_value": _money(pipeline["pipeline_value"]),
+                              "weighted_value": _money(pipeline["weighted"]), "won": pipeline["won"],
+                              "won_value": _money(pipeline["won_value"])}
+    if "ServiceTicket" in allowed:
+        [tickets] = read(
+            "MATCH (bp:BusinessPartner {key: $key}) OPTIONAL MATCH (bp)-[:RAISED]->(t:ServiceTicket) "
+            "RETURN count(t) AS tickets, "
+            "count(CASE WHEN t.status IN ['OPEN', 'IN_PROGRESS'] THEN 1 END) AS open_tickets, "
+            "count(CASE WHEN t.status IN ['OPEN', 'IN_PROGRESS'] AND t.due_at < datetime() THEN 1 END) AS overdue",
+            {"key": number})
+        result["service"] = dict(tickets)
     if "PurchaseOrder" in allowed:
         [supplier] = read("MATCH (bp:BusinessPartner {key: $key}) "
                           "OPTIONAL MATCH (bp)-[:SUPPLIES]->(m:Material) "
@@ -92,7 +117,7 @@ def document_flow(company_code: str, number: str, allowed: set) -> dict | None:
     """Everything before and after one document in its process chain, like SAP's document flow."""
     label = PREFIX_LABELS.get(number[:2].upper())
     if label is None:
-        raise ValueError(f"Unknown document type in {number!r}: use SO, DL, IN, PO, GR, IV, DZ or KZ numbers.")
+        raise ValueError(f"Unknown document type in {number!r}: use QT, SO, DL, IN, PO, GR, IV, DZ or KZ numbers.")
     if label not in allowed:
         raise PermissionError(label)
     if label == "Payment":

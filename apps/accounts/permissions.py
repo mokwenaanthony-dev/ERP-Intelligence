@@ -13,7 +13,9 @@ Role               Writes                      Reads only
 =================  ==========================  ===================================
 Finance Manager    finance, supplier invoices  sales, inventory, purchasing
 Accountant         finance, supplier invoices  sales, inventory, purchasing
-Sales Rep          sales (orders, customers)   inventory (catalogue lookup)
+Sales Rep          sales (orders, customers),  inventory (catalogue lookup)
+                   CRM (leads, opportunities,
+                   quotations, tickets)
 Inventory Manager  inventory, goods receipts   purchase orders
 Purchasing Officer purchasing, goods receipts  inventory, supplier invoices
 HR Admin           hr                          -
@@ -61,6 +63,13 @@ FinancePermission = RolePermission.build(
 
 SalesPermission = RolePermission.build(
     "SalesPermission",
+    write=(Role.SALES_REP,),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.VIEWER),
+)
+
+# CRM (Wave 7a): the sales team works it; finance and viewers read the pipeline and tickets.
+CRMPermission = RolePermission.build(
+    "CRMPermission",
     write=(Role.SALES_REP,),
     read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.VIEWER),
 )

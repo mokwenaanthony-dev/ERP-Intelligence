@@ -68,6 +68,26 @@
     {
       "key": "payroll_run_id",
       "value": ""
+    },
+    {
+      "key": "lead_id",
+      "value": ""
+    },
+    {
+      "key": "opportunity_number",
+      "value": ""
+    },
+    {
+      "key": "quotation_id",
+      "value": ""
+    },
+    {
+      "key": "ticket_id",
+      "value": ""
+    },
+    {
+      "key": "crm_customer",
+      "value": ""
     }
   ],
   "item": [
@@ -687,6 +707,489 @@
             "body": {
               "mode": "raw",
               "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CRM - lead to order, service (login as sales_rep; Wave 7a)",
+      "item": [
+        {
+          "name": "1. Create campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/campaigns/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "campaigns",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"code\": \"WEB-PROMO\",\n  \"name\": \"Website promotion\",\n  \"channel\": \"WEB\",\n  \"start_date\": \"2026-06-01\",\n  \"end_date\": \"2026-06-30\",\n  \"budget\": \"3000.00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Create lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/leads/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "leads",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"company_name\": \"Highlands Hardware (Pty) Ltd\",\n  \"contact_name\": \"Demo Contact\",\n  \"email\": \"buyer@highlands.example.co.za\",\n  \"source\": \"CAMPAIGN\",\n  \"campaign\": \"WEB-PROMO\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('lead_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Qualify lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/leads/{{lead_id}}/qualify/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "leads",
+                "{{lead_id}}",
+                "qualify",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. Convert lead (customer + opportunity)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/leads/{{lead_id}}/convert/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "leads",
+                "{{lead_id}}",
+                "convert",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Store fit-out\",\n  \"expected_close_date\": \"2026-07-31\",\n  \"expected_value\": \"9000\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) { const o = pm.response.json(); pm.collectionVariables.set('opportunity_number', o.opportunity_number); pm.collectionVariables.set('crm_customer', o.customer); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Create quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/quotations/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "quotations",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sales_organization\": \"1000\",\n  \"customer\": \"{{crm_customer}}\",\n  \"opportunity\": \"{{opportunity_number}}\",\n  \"quotation_date\": \"2026-06-10\",\n  \"valid_until\": \"2026-07-10\",\n  \"items\": [\n    {\n      \"material\": \"TG-1001\",\n      \"quantity\": \"30\"\n    },\n    {\n      \"material\": \"TG-1002\",\n      \"quantity\": \"5\",\n      \"net_price\": \"450.00\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('quotation_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Send quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/quotations/{{quotation_id}}/send/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "quotations",
+                "{{quotation_id}}",
+                "send",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. Accept quotation (creates the sales order)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/quotations/{{quotation_id}}/accept/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "quotations",
+                "{{quotation_id}}",
+                "accept",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"on\": \"2026-06-20\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Pipeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/pipeline/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "pipeline",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Campaign performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/campaign-performance/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "campaign-performance",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Open a service ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/tickets/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "tickets",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"customer\": \"{{customer_bp}}\",\n  \"subject\": \"Gadget stopped working\",\n  \"priority\": \"URGENT\",\n  \"material\": \"TG-1002\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('ticket_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve the ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/tickets/{{ticket_id}}/resolve/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "tickets",
+                "{{ticket_id}}",
+                "resolve",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"Replacement sent\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Overdue tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/crm/overdue-tickets/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "overdue-tickets",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
             }
           }
         }

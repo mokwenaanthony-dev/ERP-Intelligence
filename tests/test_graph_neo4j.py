@@ -274,3 +274,23 @@ def test_shop_floor_shows_down_cells_and_the_orders_they_hold_up(graph, make_use
     response = api.get("/api/graph/shop-floor/", {"plant": "1000"})
     assert response.status_code == 200 and response.data["needs_attention"][0]["cell"] == "1000/PRESS3"
     assert api.get("/api/graph/shop-floor/").status_code == 400
+
+
+def test_customer_360_shows_the_pipeline_and_service_and_flow_starts_at_a_quotation(graph, make_user):
+    """Wave 7a: CRM in the graph. Acme has one open deal and two tickets (one urgent and overdue)."""
+    from apps.crm.models import Quotation
+
+    call_command("setup_demo_crm", stdout=StringIO())
+    assert processor.process_outbox(limit=100000, store=get_store())["failed"] == 0
+    acme = BusinessPartner.objects.get(name="Acme Retail (Pty) Ltd").number
+
+    view = queries.customer_360(acme, labels_for(make_user, Role.SALES_REP))
+    assert view["pipeline"] == {"open_opportunities": 1, "pipeline_value": 19900.0, "weighted_value": 14925.0,
+                                "won": 0, "won_value": 0.0}
+    assert view["service"] == {"tickets": 2, "open_tickets": 1, "overdue": 1}
+    assert "pipeline" not in queries.customer_360(acme, labels_for(make_user, Role.PURCHASING_OFFICER))
+
+    won = Quotation.objects.get(quotation_number="QT00000001")
+    flow = queries.document_flow("1000", "QT00000001", labels_for(make_user, Role.SALES_REP))
+    assert [d["type"] for d in flow["documents"]] == ["Quotation", "SalesOrder"]
+    assert flow["documents"][0]["links"] == [{"type": "ORDERED_AS", "to": f"1000/{won.sales_order.order_number}"}]

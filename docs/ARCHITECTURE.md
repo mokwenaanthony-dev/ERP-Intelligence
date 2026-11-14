@@ -232,7 +232,8 @@ Design rules:
 | 6b ✅ | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0 (own repository): Python MES, store-and-forward, simulator, Mosquitto | Builds against the contract |
 | 6c ✅ | Rust edge agent (MES v0.2.0): standard library only, Modbus TCP to a simulated PLC; MES dispatching, confirmations with measured hours | A real machine's data, same topics |
 | 6d ✅ | Live cell state: latest state per cell in the ERP, projected onto the graph's `Cell` nodes; shop-floor query (cells down and the orders they hold up) | Closes the loop between the UNS and the graph |
-| 7 🗺️ | CRM and SRM | Extends sales and purchasing; enriches Customer 360 and supplier risk |
+| 7a ✅ | CRM: campaigns, leads, opportunities and pipeline, quotations into sales orders, service tickets with SLAs; CRM on the graph and in Customer 360 | Extends sales; enriches Customer 360 |
+| 7b 🔜 | SRM: supplier onboarding, requests for quotation, contracts, supplier evaluation | Extends purchasing; enriches supplier risk |
 | 8 🗺️ | SCM: demand forecasting (FastAPI ML service), MRP, supply-chain risk analysis on the graph | Needs production, suppliers and history |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 
