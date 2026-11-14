@@ -1,0 +1,78 @@
+{
+  "schema": "demand-forecast/v1",
+  "model_version": "0.1.0",
+  "horizon": 3,
+  "series": [
+    {
+      "key": "1000/TG-1001",
+      "method": "holt_damped",
+      "backtest": {
+        "mae": 1.882,
+        "mase": 0.714,
+        "points": 6,
+        "candidates": {
+          "naive": 2.333,
+          "moving_average": 2.833,
+          "ses": 2.403,
+          "holt_damped": 1.882
+        }
+      },
+      "forecast": [
+        {
+          "period": "2026-01",
+          "quantity": 52.901,
+          "lower": 50.268,
+          "upper": 55.534
+        },
+        {
+          "period": "2026-02",
+          "quantity": 53.421,
+          "lower": 49.697,
+          "upper": 57.145
+        },
+        {
+          "period": "2026-03",
+          "quantity": 53.889,
+          "lower": 49.328,
+          "upper": 58.45
+        }
+      ]
+    },
+    {
+      "key": "1000/TG-1002",
+      "method": "ses",
+      "backtest": {
+        "mae": 2.005,
+        "mase": 0.613,
+        "points": 6,
+        "candidates": {
+          "naive": 3.167,
+          "moving_average": 2.778,
+          "ses": 2.005,
+          "holt_damped": 2.482,
+          "croston_sba": 2.403
+        }
+      },
+      "forecast": [
+        {
+          "period": "2026-01",
+          "quantity": 1.065,
+          "lower": 0.0,
+          "upper": 4.649
+        },
+        {
+          "period": "2026-02",
+          "quantity": 1.065,
+          "lower": 0.0,
+          "upper": 6.134
+        },
+        {
+          "period": "2026-03",
+          "quantity": 1.065,
+          "lower": 0.0,
+          "upper": 7.273
+        }
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 [![CI](https://github.com/mokwenaanthony-dev/ERP-Intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/mokwenaanthony-dev/ERP-Intelligence/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![Django](https://img.shields.io/badge/django-5.2%20LTS-0C4B33)
-![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 An ERP built to be **connected and AI-ready**, not just transactional. The core is an SAP-style
@@ -16,14 +16,18 @@ Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG
 in step with the books through the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, and an analytics layer with financial statements and margin analysis. 400+ tests, 99% coverage, CI with linting, security scanning and dependency
-auditing, and a Neo4j knowledge graph fed by a transactional outbox. **Next:** production planning.
+cost and profit centres, production planning and orders, CRM and SRM; an analytics layer with
+financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
+Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
+800+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
+dependency auditing. **Next:** MRP (Wave 8b).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
 ```mermaid
 flowchart LR
-    MES["MES: Rust edge → MQTT → Python<br/>(planned)"] <-->|ISA-95 events| CORE
+    MES["MES: Rust edge → MQTT → Python<br/>(built, own repository)"] <-->|ISA-95 events| CORE
+    CORE <-->|"demand histories → forecasts"| ML["ml_service<br/>FastAPI forecasting (built)"]
     CORE["System of record<br/>Django/DRF + PostgreSQL<br/>Financials · Logistics · HR · Controlling"] -- "outbox events" --> KG["Knowledge graph<br/>Neo4j (built)"]
     CORE --> AN["Analytics layer<br/>(built)"]
     KG --> AI["Customer 360 · document flow ·<br/>supply-chain risk · KG-RAG"]
@@ -63,7 +67,9 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 6d | Live cell state: the ERP keeps each cell's latest state from the shop floor, shows it in the equipment tree and on the graph's cells, and answers "which cells are down and which orders do they hold up?" | Done |
 | 7a | CRM: campaigns, leads (converted into customers and opportunities), a weighted pipeline, quotations accepted into sales orders at the quoted price, service tickets with SLA due times, activities; campaign return; CRM on the knowledge graph without personal data | Done |
 | 7b | SRM: supplier onboarding with due diligence (registration, VAT, B-BBEE), requests for quotation compared side by side and awarded as purchase orders, contracts released up to their target quantity, supplier evaluation from real receipts and invoices (grade A-D); SRM on the knowledge graph | Done |
-| 8 | SCM: ML demand forecasting, MRP, supply-chain risk on the graph | Next |
+| 8a | Demand forecasting: monthly demand from deliveries, a stateless FastAPI `ml_service` choosing a method per material by backtest (naive, moving average, seasonal, exponential smoothing, damped trend, Croston), forecasts with 80 % intervals stored as numbered runs | Done |
+| 8b | MRP: net requirements from forecasts and sales orders, BOM explosion, planned orders and purchase requisitions | Next |
+| 8c | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Planned |
 | 9 | PLM and digital twin | Planned |
 
 ## What Wave 0 delivers
@@ -250,6 +256,24 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 8a delivers
+
+```
+Goods issues for deliveries (601) --> demand per material and month --> ml_service (FastAPI)
+                                                                          |  backtest each method,
+                                                                          v  keep the best
+ForecastRun FR00000001 <-- forecast per month, 80 % interval, method, MAE and MASE per material
+```
+
+| Area | What exists |
+|---|---|
+| Demand history | Posted goods issues for deliveries per plant, material and month, months without demand as zero; a reversed delivery cancels out in its own month. Issues to production orders are dependent demand, left to MRP |
+| ml_service | A separate, stateless FastAPI service ([`ml_service/`](ml_service/README.md)): contract `demand-forecast-request/v1` → `demand-forecast/v1` (pydantic), methods naive, moving average, seasonal naive, simple exponential smoothing, damped Holt and Croston (SBA) for intermittent demand, chosen per series by a rolling-origin backtest (lowest MAE); 80 % intervals never below zero; deterministic; shared-secret token; the ERP's request ID in its log lines |
+| Forecast runs | Numbered FR per company code, never changed. The request is fingerprinted: the same history at the same plant returns the stored run without calling the service; new deliveries make a new run. The answer is checked against the request before it is stored, in one transaction |
+| Resilience | Off without `ML_SERVICE_URL` (503); timeouts, connection errors and 5xx retried three times (safe: the service is stateless); a 4xx or an answer outside the contract is refused (502) and nothing is stored |
+| Schedule | Celery beat forecasts every plant on the 1st of each month at 02:15; `python manage.py run_forecast --plant 1000` by hand |
+| Contract tests | A worked example in `ml_service/contract/` that the service must answer exactly, the ERP must accept, and CI runs against the built image ([ADR 0014](docs/decisions/0014-demand-forecasting-in-a-stateless-ml-service.md)) |
 
 ## What Wave 7b delivers
 
@@ -441,14 +465,14 @@ Management reports (API): income statement · balance sheet · sales margin · s
 
 | Role | Writes | Reads only |
 |---|---|---|
-| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, completing (settling) production orders, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts |
-| Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts |
-| Sales Representative | sales orders, prices, deliveries, invoices, business partners, CRM (campaigns, leads, opportunities, quotations, tickets, activities) | inventory |
-| Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders | deliveries, purchase orders, production orders |
-| Purchasing Officer | purchase orders, goods receipts, business partners, materials, SRM (supplier applications, RFQs and quotes, contracts and releases, evaluations) | inventory, supplier invoices, GR/IR report |
+| Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, completing (settling) production orders, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts, demand forecasts |
+| Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts, demand forecasts |
+| Sales Representative | sales orders, prices, deliveries, invoices, business partners, CRM (campaigns, leads, opportunities, quotations, tickets, activities) | inventory, demand forecasts |
+| Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders, demand forecasts | deliveries, purchase orders, production orders |
+| Purchasing Officer | purchase orders, goods receipts, business partners, materials, SRM (supplier applications, RFQs and quotes, contracts and releases, evaluations) | inventory, supplier invoices, GR/IR report, demand forecasts |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
-| Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete) | cost estimates, all master data |
-| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details), SRM (without applicant contact details) |
+| Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete), demand forecasts | cost estimates, all master data |
+| Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details), SRM (without applicant contact details), demand forecasts |
 | Administrator / superuser | everything, including organisation structure | - |
 
 Every signed-in user can read organisation structure and master data, including cost and profit centres.
@@ -521,6 +545,9 @@ Employee records and salaries are visible to HR only.
 | POST | `/api/srm/contracts/<id>/release/`, `/cancel/` | release `{"order_date", "items": [{"material", "quantity"}][, "delivery_date"]}` returns `{"purchase_order", "contract", "net_total"}` |
 | GET, POST | `/api/srm/evaluations/` | `?supplier=&grade=`; POST `{"company_code", "supplier", "period_start", "period_end", "quality_score", "evaluated_on"}` |
 | GET | `/api/srm/scorecard/` | `?company_code=`: every supplier with its latest grade |
+| GET | `/api/planning/demand-history/` | `?plant=&first_period=YYYY-MM[&months=24][&material=]`: delivered quantity per month |
+| GET, POST | `/api/planning/forecast-runs/` | `?plant=`; POST `{"plant", "first_period": "YYYY-MM"[, "horizon": 6, "history_months": 24, "materials": [numbers]]}`: 201 new run, 200 the stored run for the same history |
+| GET | `/api/planning/forecast/` | `?plant=&material=`: the material's latest forecast |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
@@ -582,7 +609,11 @@ docker compose up --build
 docker compose exec web python manage.py seed_data
 docker compose exec web python manage.py refresh_analytics   # beat does this every 15 minutes
 docker compose exec web python manage.py graph_rebuild       # beat keeps the graph current every 10 seconds
+docker compose exec web python manage.py run_forecast --plant 1000   # needs ML_SERVICE_TOKEN in .env
 ```
+
+The forecasting service runs at http://localhost:8001 (interactive docs on `/docs`); it refuses to
+start until `ML_SERVICE_TOKEN` (16+ random characters) is set in `.env`.
 
 Neo4j Browser: http://localhost:7474 (user `neo4j`, password `NEO4J_PASSWORD` from `.env`). Try
 `MATCH p=(:BusinessPartner)-[:PLACED]->(:SalesOrder)-[:DELIVERED_BY]->()-[:BILLED_BY]->()-[:PAID_BY]->() RETURN p LIMIT 25`.
@@ -675,6 +706,7 @@ flake8 .
 bandit -r apps erp_system -ll -x "*/migrations/*"
 pip-audit -r requirements.txt
 python manage.py makemigrations --check --dry-run --settings=erp_system.settings_test
+cd ml_service && pip install -r requirements-dev.txt && pytest   # the forecasting service (CI job "ml")
 ```
 
 The same gates run in `.github/workflows/ci.yml` on every push and pull request.
@@ -699,6 +731,10 @@ apps/
   uns/         Unified Namespace bridge: contract, publisher, listener (uns_listen, uns_republish)
   production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate (services.py);
                production orders, confirmations, settlement (orders.py); setup_demo_production
+  crm/         Campaigns, leads, opportunities, quotations, service tickets; setup_demo_crm
+  srm/         Supplier onboarding, RFQs, contracts, supplier evaluation; setup_demo_srm
+  planning/    Demand history, forecast runs, the ml_service client; run_forecast
+ml_service/    FastAPI demand-forecasting service: its own requirements, Dockerfile and tests
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code
 docs/          ARCHITECTURE.md: architecture and vision; ONTOLOGY.md: the graph's node types; decisions/: ADRs

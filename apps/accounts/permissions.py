@@ -16,13 +16,16 @@ Accountant         finance, supplier invoices  sales, inventory, purchasing
 Sales Rep          sales (orders, customers),  inventory (catalogue lookup)
                    CRM (leads, opportunities,
                    quotations, tickets)
-Inventory Manager  inventory, goods receipts   purchase orders
+Inventory Manager  inventory, goods receipts,  purchase orders
+                   demand forecasts
 Purchasing Officer purchasing, goods receipts, inventory, supplier invoices
                    SRM (onboarding, RFQs,
                    contracts, evaluations)
 HR Admin           hr                          -
-Production Planner production master data     cost estimates, all master data
-Viewer             -                           sales, inventory, purchasing
+Production Planner production master data,    cost estimates, all master data
+                   demand forecasts
+Viewer             -                           sales, inventory, purchasing,
+                                               demand forecasts
 =================  ==========================  ===================================
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -245,4 +248,12 @@ OrderGoodsMovementPermission = RolePermission.build(
 # Completing an order settles its variance to the income statement: planner or Finance Manager.
 OrderSettlementPermission = RolePermission.build(
     "OrderSettlementPermission", write=(Role.PRODUCTION_PLANNER, Role.FINANCE_MANAGER),
+)
+
+# Planning (Wave 8a): production planners and the warehouse forecast demand; finance, purchasing,
+# sales and viewers read the forecasts they plan and budget with.
+PlanningPermission = RolePermission.build(
+    "PlanningPermission",
+    write=(Role.PRODUCTION_PLANNER, Role.INVENTORY_MANAGER),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.PURCHASING_OFFICER, Role.SALES_REP, Role.VIEWER),
 )

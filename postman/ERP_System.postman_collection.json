@@ -104,6 +104,10 @@
     {
       "key": "contract_id",
       "value": ""
+    },
+    {
+      "key": "forecast_run_id",
+      "value": ""
     }
   ],
   "item": [
@@ -2279,6 +2283,195 @@
                 {
                   "key": "company_code",
                   "value": "1000"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Planning - demand forecasting (login as production_planner; Wave 8a, needs ml_service)",
+      "item": [
+        {
+          "name": "1. Demand history (deliveries per month)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/demand-history/?plant=1000&first_period=2026-12&months=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "demand-history",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                },
+                {
+                  "key": "first_period",
+                  "value": "2026-12"
+                },
+                {
+                  "key": "months",
+                  "value": "12"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Forecast plant 1000 (201 new, 200 same history)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/forecast-runs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "forecast-runs",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plant\": \"1000\",\n  \"first_period\": \"2026-12\",\n  \"horizon\": 6,\n  \"history_months\": 12\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { pm.collectionVariables.set('forecast_run_id', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Repeat the same forecast (same run back)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/forecast-runs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "forecast-runs",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plant\": \"1000\",\n  \"first_period\": \"2026-12\",\n  \"horizon\": 6,\n  \"history_months\": 12\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Forecast run with every material",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/forecast-runs/{{forecast_run_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "forecast-runs",
+                "{{forecast_run_id}}",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Latest forecast for TG-1001",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/forecast/?plant=1000&material=TG-1001",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "forecast",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                },
+                {
+                  "key": "material",
+                  "value": "TG-1001"
                 }
               ]
             }

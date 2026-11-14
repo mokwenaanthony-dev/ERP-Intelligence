@@ -20,9 +20,9 @@ GLUE = {"views.py", "serializers.py", "admin.py", "urls.py", "apps.py"}
 
 
 def _modules():
-    for folder in ("apps", "erp_system"):
+    for folder in ("apps", "erp_system", "ml_service"):
         for path in sorted((ROOT / folder).rglob("*.py")):
-            if "migrations" in path.parts or "__pycache__" in path.parts:
+            if {"migrations", "__pycache__", "tests"} & set(path.parts):
                 continue
             if path.name == "__init__.py" and not path.read_text(encoding="utf-8").strip():
                 continue  # an empty package marker has nothing to explain

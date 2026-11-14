@@ -6,6 +6,7 @@ All secrets and environment-specific values come from environment variables
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
     "apps.uns",
     "apps.crm",
     "apps.srm",
+    "apps.planning",
 ]
 
 MIDDLEWARE = [
@@ -176,6 +178,9 @@ CELERY_BEAT_SCHEDULE = {
     "project-outbox-to-graph": {"task": "graph.process_outbox", "schedule": 10},
     "purge-idempotency-keys": {"task": "common.purge_idempotency_keys", "schedule": 24 * 60 * 60},
     "publish-outbox-to-uns": {"task": "uns.publish_outbox", "schedule": 5},
+    # Wave 8a: forecast every plant from the new month (does nothing while ML_SERVICE_URL is unset).
+    "forecast-demand-monthly": {"task": "planning.forecast_all_plants",
+                                "schedule": crontab(minute=15, hour=2, day_of_month=1)},
 }
 
 # How long a client may retry a request with the same Idempotency-Key and get the first answer (ADR 0010).
@@ -193,6 +198,14 @@ GRAPH_ENABLED = bool(NEO4J_URI)
 # runs in the MES-Intelligence repository's Docker Compose; the contract is docs/UNS_CONTRACT.md.
 MQTT_URL = config("MQTT_URL", default="")
 UNS_ENABLED = bool(MQTT_URL)
+
+# --- Demand forecasting service (Wave 8a, ADR 0014) --------------------------------------------------
+# Off unless ML_SERVICE_URL is set (Docker Compose: http://ml_service:8001). ML_SERVICE_TOKEN is the
+# shared secret ml_service requires in X-Service-Token; it must be the same value on both sides.
+ML_SERVICE_URL = config("ML_SERVICE_URL", default="")
+ML_SERVICE_TOKEN = config("ML_SERVICE_TOKEN", default="")
+ML_SERVICE_TIMEOUT = config("ML_SERVICE_TIMEOUT", default=30, cast=float)  # seconds per attempt
+ML_SERVICE_RETRIES = config("ML_SERVICE_RETRIES", default=3, cast=int)  # attempts: the service is stateless
 
 # --- Logging (design document, section 4) -----------------------------------------
 # Three destinations, all with the same detailed format:
