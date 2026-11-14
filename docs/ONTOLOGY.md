@@ -1,7 +1,7 @@
 # Knowledge graph ontology
 
-**Version 1.3** (Wave 6d: live cell state). 1.2 added production orders (Wave 5b); 1.1 the equipment
-hierarchy, BOMs and routings (Wave 5a); 1.0 was Wave 4b.
+**Version 1.4** (Wave 7a: CRM). 1.3 added live cell state (Wave 6d); 1.2 production orders (Wave 5b);
+1.1 the equipment hierarchy, BOMs and routings (Wave 5a); 1.0 was Wave 4b.
 
 This document defines what every node type and relationship in the knowledge graph means, how it is
 keyed and which ERP data it comes from. It is the contract for anyone who queries the graph: people,
@@ -137,12 +137,37 @@ because accounting numbers restart each year.
 | `(ProductionOrder)-[:CONSUMES]->(Material)` | item_number, quantity | A component, quantity for the whole order |
 | `(ProductionOrder)-[:HAS_OPERATION]->(Cell)` | operation_number, description | Where each operation runs |
 
+## CRM — new in 1.4
+
+| Label | Key | Properties | Source |
+|---|---|---|---|
+| `Campaign` | `1000/SPRING-EXPO` | code, name, channel, start_date, end_date, budget | `crm.Campaign` |
+| `Opportunity` | `1000/OP00000001` | number, title, stage, probability, expected_value, expected_close_date, closed_on | `crm.Opportunity` |
+| `Quotation` | `1000/QT00000001` | number, date, valid_until, status, net_total | `crm.Quotation` |
+| `ServiceTicket` | `1000/ST00000001` | number, subject, priority, status, date, opened_at, due_at, resolved_at | `crm.ServiceTicket` |
+
+| Relationship | Properties | Meaning |
+|---|---|---|
+| `(BusinessPartner)-[:HAS_OPPORTUNITY]->(Opportunity)` | | A potential sale to this customer |
+| `(Opportunity)-[:FROM_CAMPAIGN]->(Campaign)` | | The campaign that brought it |
+| `(Opportunity)-[:QUOTED_IN]->(Quotation)` | | An offer made for it |
+| `(Quotation)-[:QUOTED_TO]->(BusinessPartner)` | | The customer it was offered to |
+| `(Quotation)-[:CONTAINS]->(Material)` | item_number, quantity, net_price | What was offered, at what price |
+| `(Quotation)-[:ORDERED_AS]->(SalesOrder)` | | The sales order it became when accepted (part of the document flow) |
+| `(BusinessPartner)-[:RAISED]->(ServiceTicket)` | | The customer's request or complaint |
+| `(ServiceTicket)-[:ABOUT]->(SalesOrder \| Material)` | | What it concerns |
+
+**Not in the graph:** leads (their contact names, e-mail addresses and phone numbers are personal data,
+and a lead is not a customer yet), and the free text of tickets (description, resolution), which may
+name people ([ADR 0012](decisions/0012-crm-in-the-monolith-on-the-business-partner.md)). Opportunities,
+quotations, tickets and campaigns are visible to the roles that see sales.
+
 ## Queries built on this ontology
 
 | Endpoint | Question |
 |---|---|
-| `/api/graph/customer-360/<number>/` | Everything about a business partner |
-| `/api/graph/document-flow/` | Order → delivery → invoice → payment (and the purchasing chain) |
+| `/api/graph/customer-360/<number>/` | Everything about a business partner; since 1.4 its pipeline and open and overdue tickets |
+| `/api/graph/document-flow/` | Quotation → order → delivery → invoice → payment (and the purchasing chain) |
 | `/api/graph/supplier-dependency/` | Single-source materials and the customers that depend on them |
 | `/api/graph/where-used/<material>/` | Products that use a material at any BOM level, their open sales orders, and open production orders that need it (1.1, orders in 1.2) |
 | `/api/graph/shop-floor/?plant=` | Every cell's live state; for cells DOWN or OFFLINE, the released production orders and open sales orders they hold up (1.3) |

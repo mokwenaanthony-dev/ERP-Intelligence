@@ -9,7 +9,9 @@ from .projection import ALL_LABELS
 
 # Production master data (equipment, BOMs, routings) is visible to everyone, as in the API.
 BASE = {"CompanyCode", "Plant", "Material", "ProfitCenter", "CostCenter", "Area", "Line", "Cell", "BOM", "Routing"}
-SALES = {"BusinessPartner", "SalesOrder", "Delivery", "Invoice", "Payment"}
+# CRM (Wave 7a) belongs to the sales side: opportunities, quotations, tickets and campaigns.
+CRM = {"Opportunity", "Quotation", "ServiceTicket", "Campaign"}
+SALES = {"BusinessPartner", "SalesOrder", "Delivery", "Invoice", "Payment"} | CRM
 PURCHASING = {"BusinessPartner", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice"}
 PEOPLE = {"OrgUnit", "Position", "Employee"}
 FINANCE = SALES | PURCHASING | {"ProductionOrder"}

@@ -1,0 +1,8 @@
+"""App configuration for customer relationship management (Wave 7a)."""
+from django.apps import AppConfig
+
+
+class CrmConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.crm"
+    verbose_name = "Customer relationship management"

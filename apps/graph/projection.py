@@ -1,4 +1,4 @@
-"""Ontology v1 (version 1.3): how ERP records become nodes and relationships.
+"""Ontology v1 (version 1.4): how ERP records become nodes and relationships.
 
 Every projector reads the *current* state of one record and writes it with idempotent MERGEs, so
 events can be processed more than once or out of order and the graph still ends up correct; the
@@ -17,6 +17,10 @@ graph without mapping tables.
     (:BOM)-[:FOR]->(:Material), (:BOM)-[:CONSUMES]->(:Material), (:Routing)-[:HAS_OPERATION]->(:Cell)
     (:ProductionOrder)-[:PRODUCES]->(:Material), (:ProductionOrder)-[:CONSUMES]->(:Material),
     (:ProductionOrder)-[:HAS_OPERATION]->(:Cell), (:Cell)-[:RUNNING]->(:ProductionOrder)
+    (:BusinessPartner)-[:HAS_OPPORTUNITY]->(:Opportunity)-[:FROM_CAMPAIGN]->(:Campaign)
+    (:Opportunity)-[:QUOTED_IN]->(:Quotation)-[:ORDERED_AS]->(:SalesOrder)
+    (:Quotation)-[:QUOTED_TO]->(:BusinessPartner)
+    (:BusinessPartner)-[:RAISED]->(:ServiceTicket)-[:ABOUT]->(:SalesOrder | :Material)
 
 Since 1.3 (Wave 6d) a ``Cell`` also carries its live state from the shop floor (``state``,
 ``state_since``, ``state_order``, ``state_operation``, ``state_reported_at``) and, while running, a
@@ -26,15 +30,20 @@ ERP's copy of the cell's retained UNS state, so the graph is still rebuilt from 
 Equipment nodes use ISA-95 names (ADR 0006) and carry their ISA-95 level and Unified Namespace topic
 path (``uns_path``). The full ontology, with every property, is documented in ``docs/ONTOLOGY.md``.
 
+Since 1.4 (Wave 7a, CRM) campaigns, opportunities, quotations and service tickets are nodes too.
+Leads are not: they hold a contact's personal data and are not customers yet (ADR 0012). Ticket
+descriptions and resolutions stay out as well (free text that may name people); a ticket carries its
+number, subject, priority, status and times.
+
 Pay data never enters the graph: employees carry name, dates and position only.
 """
 from django.apps import apps
 
-DOCUMENT_LABELS = ["SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice",
-                   "Payment", "ProductionOrder"]
+DOCUMENT_LABELS = ["Quotation", "SalesOrder", "Delivery", "Invoice", "PurchaseOrder", "GoodsReceipt", "SupplierInvoice",
+                   "Payment", "ProductionOrder", "Opportunity", "ServiceTicket"]
 MASTER_LABELS = ["CompanyCode", "BusinessPartner", "Material", "Plant", "ProfitCenter", "CostCenter", "OrgUnit",
-                 "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing"]
-ONTOLOGY_VERSION = "1.3"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
+                 "Position", "Employee", "Area", "Line", "Cell", "BOM", "Routing", "Campaign"]
+ONTOLOGY_VERSION = "1.4"  # bump with docs/ONTOLOGY.md; a breaking change needs `graph_rebuild --clear`
 ALL_LABELS = MASTER_LABELS + DOCUMENT_LABELS
 
 
@@ -374,6 +383,62 @@ def journal_entry(g, entry):
 
 # --- registry --------------------------------------------------------------------------------
 
+# --- CRM (Wave 7a) -----------------------------------------------------------------------------
+
+def campaign(g, c):
+    """``Campaign`` node: a marketing effort and its budget."""
+    g.node("Campaign", _company_child_key(c), {"code": c.code, "name": c.name, "channel": c.channel,
+                                               "start_date": c.start_date, "end_date": c.end_date,
+                                               "budget": c.budget})
+
+
+def opportunity(g, o):
+    """``Opportunity`` node: the customer HAS_OPPORTUNITY it; FROM_CAMPAIGN when a campaign brought it."""
+    key = _doc_key(o, "opportunity_number")
+    g.node("Opportunity", key, {"number": o.opportunity_number, "title": o.title, "stage": o.stage,
+                                "probability": o.probability, "expected_value": o.expected_value,
+                                "expected_close_date": o.expected_close_date, "closed_on": o.closed_on})
+    g.edge("BusinessPartner", o.customer.number, "HAS_OPPORTUNITY", "Opportunity", key)
+    g.clear_edges("Opportunity", key, "FROM_CAMPAIGN")
+    if o.campaign_id:
+        g.edge("Opportunity", key, "FROM_CAMPAIGN", "Campaign", _company_child_key(o.campaign))
+
+
+def quotation(g, q):
+    """``Quotation`` node: QUOTED_TO the customer, CONTAINS its materials, ORDERED_AS the sales order it
+    became; the opportunity it belongs to is QUOTED_IN it.
+    """
+    key = _doc_key(q, "quotation_number")
+    g.node("Quotation", key, {"number": q.quotation_number, "date": q.quotation_date, "valid_until": q.valid_until,
+                              "status": q.status, "net_total": q.net_total})
+    g.edge("Quotation", key, "QUOTED_TO", "BusinessPartner", q.customer.number)
+    if q.opportunity_id:
+        g.edge("Opportunity", _doc_key(q.opportunity, "opportunity_number"), "QUOTED_IN", "Quotation", key)
+    g.clear_edges("Quotation", key, "CONTAINS")
+    for item in q.items.select_related("material"):
+        g.edge("Quotation", key, "CONTAINS", "Material", item.material.number,
+               {"quantity": item.quantity, "net_price": item.net_price}, merge_on={"item_number": item.item_number})
+    g.clear_edges("Quotation", key, "ORDERED_AS")
+    if q.sales_order_id:
+        g.edge("Quotation", key, "ORDERED_AS", "SalesOrder", _doc_key(q.sales_order, "order_number"))
+
+
+def service_ticket(g, t):
+    """``ServiceTicket`` node: the customer RAISED it; ABOUT a sales order or a material when given.
+    The description and resolution (free text) are not projected.
+    """
+    key = _doc_key(t, "ticket_number")
+    g.node("ServiceTicket", key, {"number": t.ticket_number, "subject": t.subject, "priority": t.priority,
+                                  "status": t.status, "date": t.opened_at.date(), "opened_at": t.opened_at,
+                                  "due_at": t.due_at, "resolved_at": t.resolved_at})
+    g.edge("BusinessPartner", t.customer.number, "RAISED", "ServiceTicket", key)
+    g.clear_edges("ServiceTicket", key, "ABOUT")
+    if t.sales_order_id:
+        g.edge("ServiceTicket", key, "ABOUT", "SalesOrder", _doc_key(t.sales_order, "order_number"))
+    if t.material_id:
+        g.edge("ServiceTicket", key, "ABOUT", "Material", t.material.number)
+
+
 # "app_label.model" -> (projector, label and key of the node it owns, for deletions; None = no own node)
 PROJECTORS = {
     "organization.companycode": (company_code, lambda o: ("CompanyCode", o.code)),
@@ -402,6 +467,10 @@ PROJECTORS = {
     "production.billofmaterials": (bill_of_materials, lambda o: ("BOM", o.key)),
     "production.routing": (routing, lambda o: ("Routing", o.key)),
     "production.productionorder": (production_order, lambda o: ("ProductionOrder", _doc_key(o, "order_number"))),
+    "crm.campaign": (campaign, lambda o: ("Campaign", _company_child_key(o))),
+    "crm.opportunity": (opportunity, lambda o: ("Opportunity", _doc_key(o, "opportunity_number"))),
+    "crm.quotation": (quotation, lambda o: ("Quotation", _doc_key(o, "quotation_number"))),
+    "crm.serviceticket": (service_ticket, lambda o: ("ServiceTicket", _doc_key(o, "ticket_number"))),
 }
 
 
