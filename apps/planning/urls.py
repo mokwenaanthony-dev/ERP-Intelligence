@@ -6,6 +6,9 @@ from . import views
 
 router = DefaultRouter()
 router.register("forecast-runs", views.ForecastRunViewSet, basename="forecast-run")
+router.register("material-planning", views.MaterialPlanningViewSet, basename="material-planning")
+router.register("mrp-runs", views.MRPRunViewSet, basename="mrp-run")
+router.register("planned-orders", views.PlannedOrderViewSet, basename="planned-order")
 
 urlpatterns = [
     path("demand-history/", views.DemandHistoryView.as_view(), name="planning-demand-history"),

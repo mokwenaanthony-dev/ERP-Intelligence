@@ -108,6 +108,18 @@
     {
       "key": "forecast_run_id",
       "value": ""
+    },
+    {
+      "key": "mrp_run_id",
+      "value": ""
+    },
+    {
+      "key": "planned_make_id",
+      "value": ""
+    },
+    {
+      "key": "planned_buy_id",
+      "value": ""
     }
   ],
   "item": [
@@ -2474,6 +2486,229 @@
                   "value": "TG-1001"
                 }
               ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MRP - plan and convert (production_planner; BUY conversion as purchasing_officer; Wave 8b)",
+      "item": [
+        {
+          "name": "1. Planning parameters (FG-4001, SF-3001, RM-2001, RM-2002)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/material-planning/?plant=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "material-planning",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Run MRP (201 new, 200 unchanged data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/mrp-runs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "mrp-runs",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plant\": \"1000\",\n  \"horizon\": 6\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) { const r = pm.response.json(); pm.collectionVariables.set('mrp_run_id', r.id); const make = r.planned_orders.find(o => o.procurement === 'MAKE' && !o.is_late); if (make) { pm.collectionVariables.set('planned_make_id', make.id); } const buy = r.planned_orders.find(o => o.material === 'RM-2001'); if (buy) { pm.collectionVariables.set('planned_buy_id', buy.id); } }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Requirements list, planned orders, messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/mrp-runs/{{mrp_run_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "mrp-runs",
+                "{{mrp_run_id}}",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. Open planned orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/planned-orders/?plant=1000&status=OPEN",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "planned-orders",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                },
+                {
+                  "key": "status",
+                  "value": "OPEN"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Convert a MAKE order (production_planner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/planned-orders/{{planned_make_id}}/convert/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "planned-orders",
+                "{{planned_make_id}}",
+                "convert",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "6. Convert the RM-2001 BUY order (log in as purchasing_officer; preferred supplier Highveld)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/planned-orders/{{planned_buy_id}}/convert/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "planned-orders",
+                "{{planned_buy_id}}",
+                "convert",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"net_price\": \"38.50\"\n}"
             }
           }
         }
