@@ -16,11 +16,11 @@ Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG
 in step with the books through the ISA-95 model.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, production planning and orders, CRM and SRM; an analytics layer with
+cost and profit centres, production planning and orders, MRP, CRM and SRM; an analytics layer with
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
 800+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** MRP (Wave 8b).
+dependency auditing. **Next:** supply-chain risk on the graph (Wave 8c).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -68,8 +68,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 7a | CRM: campaigns, leads (converted into customers and opportunities), a weighted pipeline, quotations accepted into sales orders at the quoted price, service tickets with SLA due times, activities; campaign return; CRM on the knowledge graph without personal data | Done |
 | 7b | SRM: supplier onboarding with due diligence (registration, VAT, B-BBEE), requests for quotation compared side by side and awarded as purchase orders, contracts released up to their target quantity, supplier evaluation from real receipts and invoices (grade A-D); SRM on the knowledge graph | Done |
 | 8a | Demand forecasting: monthly demand from deliveries, a stateless FastAPI `ml_service` choosing a method per material by backtest (naive, moving average, seasonal, exponential smoothing, damped trend, Croston), forecasts with 80 % intervals stored as numbered runs | Done |
-| 8b | MRP: net requirements from forecasts and sales orders, BOM explosion, planned orders and purchase requisitions | Next |
-| 8c | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Planned |
+| 8b | MRP: planning parameters (make or buy, lot sizes, safety stock, lead time), net requirements from forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders due on the day they are needed, converted into production orders, contract releases or purchase orders | Done |
+| 8c | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Next |
 | 9 | PLM and digital twin | Planned |
 
 ## What Wave 0 delivers
@@ -256,6 +256,24 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 8b delivers
+
+```
+forecast (8a) ─┐                     ┌─ MAKE ─ convert ─> production order (BOM, routing, cost estimate)
+sales orders  ─┼─> MRP run MR00000001 ┤
+stock, open   ─┤   per material, by  └─ BUY ── convert ─> contract release (SRM), else purchase order
+PO / prod. orders, BOMs  low-level code
+```
+
+| Area | What exists |
+|---|---|
+| Planning parameters | Per material and plant: make or buy, lot for lot / fixed lots / minimum lot, safety stock, lead time, preferred supplier. Defaults without them: make if there is an active BOM, else buy |
+| Demand and supply | Open sales orders on their dates; the forecast the orders do not cover (orders consume it), minus this month's deliveries; scheduled receipts from open purchase and production orders; components of open production orders not yet issued |
+| Netting | Materials from finished products down (low-level codes); requirements and receipts in date order; when projected stock would fall below safety stock, a planned order for the shortage (lot-sized), due that day, started lead time earlier; MAKE orders become component requirements on their start date |
+| Runs | Numbered MR, kept with the monthly requirements list (independent, dependent, receipts, planned, projected stock), the planned orders and messages (orders that should have started, MAKE without a BOM). Unchanged data returns the stored run (fingerprint); a new run supersedes earlier open proposals. Nightly at 02:45 |
+| Conversion | MAKE → production order (production planner); BUY → release against an active contract that covers the quantity, else a purchase order to the given, preferred or last supplier at the given or last price (purchasing officer). Converting twice returns the same document |
+| Demo | `setup_demo_mrp` (in `seed_data`): parameters for FG-4001, SF-3001, RM-2001, RM-2002 and an order for 450 brackets next month; `run_mrp --plant 1000` plans 500 brackets, 500 frames, 500 kg steel and 200 fastener packs ([ADR 0015](docs/decisions/0015-mrp-on-dated-requirements-with-planned-orders.md)) |
 
 ## What Wave 8a delivers
 
@@ -468,10 +486,10 @@ Management reports (API): income statement · balance sheet · sales margin · s
 | Finance Manager | finance (incl. configuration, period open/close, payments), customer and supplier invoices, cost and profit centres, activity types and rates, completing (settling) production orders, payroll runs, currencies and rates, business partners | sales orders, deliveries, inventory, purchase orders, goods receipts, demand forecasts |
 | Accountant | journal entries, payments, customer and supplier invoices, business partners | payroll runs, controlling reports, finance configuration, sales orders, deliveries, inventory, purchase orders, goods receipts, demand forecasts |
 | Sales Representative | sales orders, prices, deliveries, invoices, business partners, CRM (campaigns, leads, opportunities, quotations, tickets, activities) | inventory, demand forecasts |
-| Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders, demand forecasts | deliveries, purchase orders, production orders |
-| Purchasing Officer | purchase orders, goods receipts, business partners, materials, SRM (supplier applications, RFQs and quotes, contracts and releases, evaluations) | inventory, supplier invoices, GR/IR report, demand forecasts |
+| Inventory Manager | goods movements, goods receipts, delivery reversal, materials, issues to and receipts from production orders, demand forecasts, MRP runs and parameters | deliveries, purchase orders, production orders |
+| Purchasing Officer | purchase orders, goods receipts, business partners, materials, SRM (supplier applications, RFQs and quotes, contracts and releases, evaluations), converting BUY planned orders | inventory, supplier invoices, GR/IR report, demand forecasts |
 | HR Admin | org units, positions, employees, payroll runs | cost and profit centres |
-| Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete), demand forecasts | cost estimates, all master data |
+| Production Planner | production areas, lines, work centres, BOMs, routings, production orders (create, release, issue, confirm, receive, complete), demand forecasts, MRP (parameters, runs, converting MAKE planned orders) | cost estimates, all master data |
 | Viewer | - | sales orders, deliveries, invoices, inventory, purchase orders, goods receipts, supplier invoices, CRM (without lead contact details), SRM (without applicant contact details), demand forecasts |
 | Administrator / superuser | everything, including organisation structure | - |
 
@@ -548,6 +566,10 @@ Employee records and salaries are visible to HR only.
 | GET | `/api/planning/demand-history/` | `?plant=&first_period=YYYY-MM[&months=24][&material=]`: delivered quantity per month |
 | GET, POST | `/api/planning/forecast-runs/` | `?plant=`; POST `{"plant", "first_period": "YYYY-MM"[, "horizon": 6, "history_months": 24, "materials": [numbers]]}`: 201 new run, 200 the stored run for the same history |
 | GET | `/api/planning/forecast/` | `?plant=&material=`: the material's latest forecast |
+| CRUD | `/api/planning/material-planning/` | `?plant=`; `{"material", "plant", "procurement": "MAKE"\|"BUY", "lot_size": "EX"\|"FX"\|"MN", "lot_quantity", "safety_stock", "lead_time_days", "preferred_supplier"}` |
+| GET, POST | `/api/planning/mrp-runs/` | `?plant=`; POST `{"plant"[, "planning_date", "horizon": 6]}`: 201 new run, 200 the stored run for unchanged data; detail has the requirements list, planned orders and messages |
+| GET | `/api/planning/planned-orders/` | `?plant=&status=OPEN&procurement=MAKE\|BUY` |
+| POST | `/api/planning/planned-orders/<id>/convert/` | `{"on"[, "supplier", "net_price"]}`: MAKE (production planner) → production order; BUY (purchasing officer) → contract release or purchase order |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
 | GET | `/api/analytics/sales-margin/` | `?company_code=&fiscal_year=[&group_by=customer\|material\|profit_center][&period_from=&period_to=]` |
@@ -733,7 +755,7 @@ apps/
                production orders, confirmations, settlement (orders.py); setup_demo_production
   crm/         Campaigns, leads, opportunities, quotations, service tickets; setup_demo_crm
   srm/         Supplier onboarding, RFQs, contracts, supplier evaluation; setup_demo_srm
-  planning/    Demand history, forecast runs, the ml_service client; run_forecast
+  planning/    Demand history, forecast runs, the ml_service client; MRP (mrp.py); run_forecast, run_mrp, setup_demo_mrp
 ml_service/    FastAPI demand-forecasting service: its own requirements, Dockerfile and tests
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code

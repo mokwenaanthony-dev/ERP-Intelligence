@@ -257,3 +257,26 @@ def test_the_command(planning, service):
                  "--horizon", "2", stdout=out)
     assert "Created forecast run FR00000001" in out.getvalue() and "Unchanged forecast run FR00000001" in out.getvalue()
     assert "TG-1001" in out.getvalue()
+
+
+def test_forecasting_chosen_materials_and_refusing_services(planning, service):
+    run_, created = services.run_forecast(planning.plant, first_period=NOVEMBER, history_months=8,
+                                          materials=[planning.gadget])
+    assert created and [i.material.number for i in run_.items.all()] == ["TG-1002"]
+    consulting = Material.objects.create(number="SV-9001", description="Consulting",
+                                         base_unit=planning.widget.base_unit,
+                                         material_type=Material.MaterialType.SERVICE)
+    with pytest.raises(ForecastError, match="SV-9001 are services"):
+        services.run_forecast(planning.plant, first_period=NOVEMBER, history_months=8, materials=[consulting])
+
+
+def test_a_call_outside_a_request_gets_its_own_request_id(planning, service, caplog):
+    from apps.common.logcontext import request_id
+
+    token = request_id.set("-")  # as in a command or task without one
+    try:
+        services.run_forecast(planning.plant, first_period=NOVEMBER, history_months=8)
+    finally:
+        request_id.reset(token)
+    sent = service.calls[0]["headers"]["X-Request-ID"]
+    assert sent.startswith("plan-") and f"request ID {sent}" in caplog.text  # findable on both sides

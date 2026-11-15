@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 
-from apps.common.logcontext import request_id
+from apps.common.logcontext import new_request_id, request_id
 
 logger = logging.getLogger(__name__)
 PATH = "/v1/forecast"
@@ -66,8 +66,14 @@ def forecast(payload: dict) -> dict:
     if urlsplit(base).scheme not in ("http", "https"):
         raise ServiceOff("ML_SERVICE_URL must start with http:// or https://")
     body = json.dumps(payload, separators=(",", ":")).encode()
+    call_id = request_id.get()
+    if call_id == "-":
+        # Code running outside an API request, a command or a Celery task, without its own ID: make one
+        # for this call and name it in the log, so one grep finds the ERP's and the service's lines.
+        call_id = f"plan-{new_request_id()}"
+        logger.info("ml_service call outside a request: request ID %s", call_id)
     headers = {"Content-Type": "application/json", "X-Service-Token": settings.ML_SERVICE_TOKEN,
-               "X-Request-ID": request_id.get()}
+               "X-Request-ID": call_id}
     attempts = max(1, settings.ML_SERVICE_RETRIES)
     last_problem = ""
     for attempt in range(1, attempts + 1):

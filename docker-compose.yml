@@ -125,6 +125,7 @@ services:
     environment:
       ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: Africa/Johannesburg  # log in the ERP's time zone (settings.TIME_ZONE), so the two logs line up
 
   # Knowledge graph (Neo4j Browser on http://localhost:7474, Bolt on 7687), fed from the outbox.
   neo4j:

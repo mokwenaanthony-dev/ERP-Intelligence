@@ -1,4 +1,4 @@
-"""REST API views for planning, under ``/api/planning/``.
+"""REST API views for planning (forecasts, Wave 8a; MRP, Wave 8b), under ``/api/planning/``.
 
     GET  demand-history/?plant=&first_period=&months=[&material=]   what customers took, per month
     GET  forecast-runs/[?plant=]  ·  GET forecast-runs/<id>/         stored runs
@@ -9,19 +9,25 @@ Access (``PlanningPermission``): production planners and the warehouse run forec
 purchasing, sales and viewers read them. Forecasting depends on ``ml_service``: if it is off or
 unreachable the API answers 503, if it answers outside the contract 502 (ADR 0014).
 """
+from django.utils import timezone
 from rest_framework import mixins, serializers, status, viewsets
-from rest_framework.exceptions import APIException
+from rest_framework.decorators import action
+from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import Role
 from apps.accounts.permissions import PlanningPermission
 from apps.masterdata.models import Material
 from apps.organization.models import Plant
 
-from . import ml_client, services
-from .models import ForecastRun
-from .serializers import (ForecastRequestSerializer, ForecastRunListSerializer, ForecastRunSerializer,
-                          LatestForecastSerializer, MonthField)
+from . import ml_client, mrp, services
+from .models import ForecastRun, MaterialPlanning, MRPRun, PlannedOrder
+from .serializers import (ConvertSerializer, ForecastRequestSerializer, ForecastRunListSerializer,
+                          ForecastRunSerializer, LatestForecastSerializer, MaterialPlanningSerializer,
+                          MonthField, MRPRequestSerializer, MRPRunListSerializer, MRPRunSerializer,
+                          PlannedOrderSerializer, run)
 
 
 class ServiceUnavailable(APIException):
@@ -97,3 +103,79 @@ class LatestForecastView(APIView):
             return Response({"detail": "This material has not been forecast at this plant."},
                             status=status.HTTP_404_NOT_FOUND)
         return Response(LatestForecastSerializer(item).data)
+
+
+# --- MRP (Wave 8b) -------------------------------------------------------------------------------------
+#
+#   CRUD material-planning/                    how each material is planned (planners)
+#   GET  mrp-runs/[?plant=] · mrp-runs/<id>/   runs with requirements lists, planned orders, messages
+#   POST mrp-runs/                             plan (201 new run, 200 the stored run for unchanged data)
+#   GET  planned-orders/[?plant=&status=&procurement=]
+#   POST planned-orders/<id>/convert/          MAKE: production planner; BUY: purchasing officer
+
+class MaterialPlanningViewSet(viewsets.ModelViewSet):
+    permission_classes = [PlanningPermission]
+    serializer_class = MaterialPlanningSerializer
+
+    def get_queryset(self):
+        rows = MaterialPlanning.objects.select_related("material", "plant", "preferred_supplier")
+        plant = self.request.query_params.get("plant")
+        return rows.filter(plant__code=plant) if plant else rows
+
+
+class MRPRunViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    permission_classes = [PlanningPermission]
+
+    def get_queryset(self):
+        runs = MRPRun.objects.select_related("company_code", "plant").prefetch_related(
+            "materials__material", "materials__lines", "planned_orders__material", "planned_orders__run__plant",
+            "messages__material")
+        plant = self.request.query_params.get("plant")
+        return runs.filter(plant__code=plant) if plant else runs
+
+    def get_serializer_class(self):
+        return MRPRunListSerializer if self.action == "list" else MRPRunSerializer
+
+    def create(self, request):
+        data = MRPRequestSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        mrp_run, created = data.post(request.user)
+        return Response(MRPRunSerializer(self.get_queryset().get(pk=mrp_run.pk)).data,
+                        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+# Converting creates real orders, so it follows the role that owns them, not the planning roles.
+CONVERT_ROLES = {MaterialPlanning.Procurement.MAKE: (Role.PRODUCTION_PLANNER,),
+                 MaterialPlanning.Procurement.BUY: (Role.PURCHASING_OFFICER,)}
+
+
+class PlannedOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    serializer_class = PlannedOrderSerializer
+
+    def get_permissions(self):
+        # Reading follows the planning roles; converting is checked per order below.
+        return [IsAuthenticated()] if self.action == "convert" else [PlanningPermission()]
+
+    def get_queryset(self):
+        orders = PlannedOrder.objects.select_related("run__plant", "material")
+        params = self.request.query_params
+        for field, value in (("run__plant__code", params.get("plant")), ("status", params.get("status")),
+                             ("procurement", params.get("procurement"))):
+            if value:
+                orders = orders.filter(**{field: value})
+        return orders.order_by("-run__planning_date", "-run__id", "number")
+
+    @action(detail=True, methods=["post"])
+    def convert(self, request, pk=None):
+        planned = self.get_object()
+        user = request.user
+        if not (user.is_superuser or user.role == Role.ADMIN or user.role in CONVERT_ROLES[planned.procurement]):
+            raise PermissionDenied(f"Converting a {planned.procurement} planned order needs the "
+                                   f"{' or '.join(r.label for r in CONVERT_ROLES[planned.procurement])} role.")
+        data = ConvertSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        number = run(mrp.convert, planned, on=data.validated_data.get("on") or timezone.localdate(),
+                     supplier=data.validated_data.get("supplier"), net_price=data.validated_data.get("net_price"),
+                     user=user)
+        planned.refresh_from_db()
+        return Response({**PlannedOrderSerializer(planned).data, "document_number": number})

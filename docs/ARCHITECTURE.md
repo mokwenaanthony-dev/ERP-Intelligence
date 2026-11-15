@@ -238,8 +238,8 @@ Design rules:
 | 7a ✅ | CRM: campaigns, leads, opportunities and pipeline, quotations into sales orders, service tickets with SLAs; CRM on the graph and in Customer 360 | Extends sales; enriches Customer 360 |
 | 7b ✅ | SRM: supplier onboarding with due diligence, RFQs awarded as purchase orders, contracts with releases, supplier evaluation and grades; SRM on the graph | Extends purchasing; enriches supplier risk |
 | 8a ✅ | Demand forecasting: demand history from deliveries, stateless FastAPI `ml_service` (methods chosen by backtest, 80 % intervals), numbered forecast runs | Needs sales history; MRP plans against it |
-| 8b 🔜 | MRP: net requirements from forecasts and sales orders, BOM explosion, planned orders and purchase requisitions | Needs forecasts, BOMs, routings and suppliers |
-| 8c 🗺️ | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Needs SRM grades and forecasts |
+| 8b ✅ | MRP: planning parameters, dated netting of forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders converted into production orders, contract releases or purchase orders | Needs forecasts, BOMs, routings and suppliers |
+| 8c 🔜 | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Needs SRM grades and forecasts |
 | 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

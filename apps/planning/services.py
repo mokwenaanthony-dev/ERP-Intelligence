@@ -161,7 +161,7 @@ def run_forecast(plant, *, first_period: date, horizon: int = 6, history_months:
         materials = list(materials)
         if not materials:
             raise ForecastError("Name at least one material, or leave materials out to forecast all with demand.")
-        services_ = [m.number for m in materials if not m.is_stock_managed()]
+        services_ = [m.number for m in materials if not m.is_stock_managed]
         if services_:
             raise ForecastError(f"{', '.join(services_)} are services: only stock materials are forecast.")
     histories = demand_history(plant, first_period, history_months, materials)
