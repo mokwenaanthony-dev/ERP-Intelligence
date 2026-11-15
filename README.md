@@ -15,12 +15,15 @@ Customer 360, document flow, supply-chain risk and knowledge-graph retrieval (KG
 [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) project (Python MES, Rust edge agents, Modbus, MQTT) keeps shop-floor activity
 in step with the books through the ISA-95 model.
 
+> **The goal:** everything connected; the current *and future* state of the business known in real
+> time; ML predicts, AI recommends, **people decide**. Read the [vision and scorecard](docs/VISION.md).
+
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, production planning and orders, MRP, CRM and SRM; an analytics layer with
+cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, CRM and SRM; an analytics layer with
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
 800+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** supply-chain risk on the graph (Wave 8c).
+dependency auditing. **Next:** the control tower and AI recommendations (Wave 9).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -69,8 +72,10 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 7b | SRM: supplier onboarding with due diligence (registration, VAT, B-BBEE), requests for quotation compared side by side and awarded as purchase orders, contracts released up to their target quantity, supplier evaluation from real receipts and invoices (grade A-D); SRM on the knowledge graph | Done |
 | 8a | Demand forecasting: monthly demand from deliveries, a stateless FastAPI `ml_service` choosing a method per material by backtest (naive, moving average, seasonal, exponential smoothing, damped trend, Croston), forecasts with 80 % intervals stored as numbered runs | Done |
 | 8b | MRP: planning parameters (make or buy, lot sizes, safety stock, lead time), net requirements from forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders due on the day they are needed, converted into production orders, contract releases or purchase orders | Done |
-| 8c | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Next |
-| 9 | PLM and digital twin | Planned |
+| 8c | Supply-chain risk and future state: revenue at risk per supplier (single sources, BOM where-used to open sales orders, grades, contracts) with recommendations; forecast accuracy against actual deliveries; MRP re-checked every 15 minutes | Done |
+| 9 | Control tower and recommendations: one live view of today's and the projected state with the KPIs of the [vision](docs/VISION.md); a problems inbox; recommendations accepted or rejected with the decision recorded; an AI agent on KG-RAG that recommends but never executes | Next |
+| 10 | Digital supply-chain network: supplier portal and API, customer order status, a shared forecast, anonymised benchmarks | Planned |
+| 11 | PLM and digital twin | Planned |
 
 ## What Wave 0 delivers
 
@@ -256,6 +261,23 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 8c delivers
+
+```
+purchase orders, contracts, preferred suppliers ─> who supplies what (single source?)
+active BOMs (where-used, any depth) ─────────────> which products depend on it
+open sales orders in the horizon ────────────────> revenue exposed / at risk per supplier ─> level + recommendation
+forecast runs + actual deliveries ───────────────> forecast accuracy per material and month
+```
+
+| Area | What exists |
+|---|---|
+| Revenue at risk | Per supplier: the materials it supplies (single source? on contract?), the products that use them through any BOM level, the open sales value exposed and at risk within the horizon, the orders at risk, a level (HIGH / MEDIUM / LOW) and a recommendation (qualify a second source by RFQ, agree a contract, evaluate the supplier). People decide |
+| Forecast accuracy | Each past month's forecast (from the run available at the time) against actual deliveries: MAE, bias, accuracy % |
+| Planning latency | MRP re-checked every 15 minutes (was nightly); unchanged data returns the stored run |
+| Vision | [docs/VISION.md](docs/VISION.md): the goal, latency targets, business results, safeguards and an honest scorecard |
+| Demo | `python manage.py supply_risk --company 1000` after the demo commands: Highveld HIGH (sole steel supplier for the 450-bracket order, R202,500 at risk), with what to do about it ([ADR 0016](docs/decisions/0016-supply-risk-and-forecast-accuracy-in-the-service-layer.md)) |
 
 ## What Wave 8b delivers
 
@@ -569,6 +591,8 @@ Employee records and salaries are visible to HR only.
 | CRUD | `/api/planning/material-planning/` | `?plant=`; `{"material", "plant", "procurement": "MAKE"\|"BUY", "lot_size": "EX"\|"FX"\|"MN", "lot_quantity", "safety_stock", "lead_time_days", "preferred_supplier"}` |
 | GET, POST | `/api/planning/mrp-runs/` | `?plant=`; POST `{"plant"[, "planning_date", "horizon": 6]}`: 201 new run, 200 the stored run for unchanged data; detail has the requirements list, planned orders and messages |
 | GET | `/api/planning/planned-orders/` | `?plant=&status=OPEN&procurement=MAKE\|BUY` |
+| GET | `/api/planning/supplier-risk/` | `?company_code=[&months=3][&on=]`: revenue at risk per supplier, level and recommendation |
+| GET | `/api/planning/forecast-accuracy/` | `?plant=[&months=6][&on=]`: forecasts against actual deliveries, MAE, bias, accuracy |
 | POST | `/api/planning/planned-orders/<id>/convert/` | `{"on"[, "supplier", "net_price"]}`: MAKE (production planner) → production order; BUY (purchasing officer) → contract release or purchase order |
 | GET | `/api/analytics/income-statement/` | `?company_code=&fiscal_year=[&period_from=&period_to=][&profit_center=]` |
 | GET | `/api/analytics/balance-sheet/` | `?company_code=&fiscal_year=&period=` |
@@ -755,7 +779,7 @@ apps/
                production orders, confirmations, settlement (orders.py); setup_demo_production
   crm/         Campaigns, leads, opportunities, quotations, service tickets; setup_demo_crm
   srm/         Supplier onboarding, RFQs, contracts, supplier evaluation; setup_demo_srm
-  planning/    Demand history, forecast runs, the ml_service client; MRP (mrp.py); run_forecast, run_mrp, setup_demo_mrp
+  planning/    Demand history, forecast runs, the ml_service client; MRP (mrp.py); risk and forecast accuracy (risk.py); run_forecast, run_mrp, supply_risk, setup_demo_mrp
 ml_service/    FastAPI demand-forecasting service: its own requirements, Dockerfile and tests
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code

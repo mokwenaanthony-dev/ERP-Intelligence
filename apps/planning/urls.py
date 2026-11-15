@@ -13,5 +13,7 @@ router.register("planned-orders", views.PlannedOrderViewSet, basename="planned-o
 urlpatterns = [
     path("demand-history/", views.DemandHistoryView.as_view(), name="planning-demand-history"),
     path("forecast/", views.LatestForecastView.as_view(), name="planning-latest-forecast"),
+    path("supplier-risk/", views.SupplierRiskView.as_view(), name="planning-supplier-risk"),
+    path("forecast-accuracy/", views.ForecastAccuracyView.as_view(), name="planning-forecast-accuracy"),
     *router.urls,
 ]

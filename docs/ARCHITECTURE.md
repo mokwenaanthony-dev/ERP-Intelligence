@@ -7,6 +7,7 @@ are ordered the way they are.
 
 > **Status key:** ✅ built and tested · 🔜 next · 🗺️ planned. See the [roadmap](../README.md#roadmap).
 > **Why** each choice was made is recorded in the [decision records](decisions/README.md).
+> **What it is all for** is in the [vision](VISION.md): the goal, latency targets and safeguards.
 
 ## The idea in one picture
 
@@ -239,7 +240,9 @@ Design rules:
 | 7b ✅ | SRM: supplier onboarding with due diligence, RFQs awarded as purchase orders, contracts with releases, supplier evaluation and grades; SRM on the graph | Extends purchasing; enriches supplier risk |
 | 8a ✅ | Demand forecasting: demand history from deliveries, stateless FastAPI `ml_service` (methods chosen by backtest, 80 % intervals), numbered forecast runs | Needs sales history; MRP plans against it |
 | 8b ✅ | MRP: planning parameters, dated netting of forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders converted into production orders, contract releases or purchase orders | Needs forecasts, BOMs, routings and suppliers |
-| 8c 🔜 | Supply-chain risk on the graph: single sources, supplier grades and contracts against forecast demand | Needs SRM grades and forecasts |
-| 9 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
+| 8c ✅ | Supply-chain risk and future state: revenue at risk per supplier with recommendations, forecast accuracy against actuals, MRP every 15 minutes | Needs SRM grades, forecasts and MRP |
+| 9 🔜 | Control tower and recommendations: live current and projected state with KPIs, problems inbox, recommendations with recorded decisions, an AI agent on KG-RAG that recommends but never executes | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
+| 10 🗺️ | Digital supply-chain network: supplier portal and API, customer order status, shared forecast, anonymised benchmarks | Everyone plugged in |
+| 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

@@ -2492,7 +2492,7 @@
       ]
     },
     {
-      "name": "MRP - plan and convert (production_planner; BUY conversion as purchasing_officer; Wave 8b)",
+      "name": "MRP and risk - plan, convert, revenue at risk, forecast accuracy (production_planner; BUY conversion as purchasing_officer; Waves 8b-8c)",
       "item": [
         {
           "name": "1. Planning parameters (FG-4001, SF-3001, RM-2001, RM-2002)",
@@ -2709,6 +2709,74 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"net_price\": \"38.50\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Revenue at risk per supplier (Wave 8c)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/supplier-risk/?company_code=1000&months=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "supplier-risk",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "months",
+                  "value": "3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. Forecast accuracy against deliveries (Wave 8c)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/planning/forecast-accuracy/?plant=1000&months=6",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "planning",
+                "forecast-accuracy",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "plant",
+                  "value": "1000"
+                },
+                {
+                  "key": "months",
+                  "value": "6"
+                }
+              ]
             }
           }
         }

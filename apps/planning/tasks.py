@@ -1,4 +1,4 @@
-"""Celery tasks: forecast every plant monthly (the 1st at 02:15) and run MRP daily (02:45)."""
+"""Celery tasks: forecast every plant monthly (the 1st at 02:15) and re-check MRP every 15 minutes."""
 from celery import shared_task
 from django.utils import timezone
 
@@ -18,7 +18,7 @@ def forecast_all_plants():
 
 @shared_task(name="planning.mrp_all_plants")
 def mrp_all_plants():
-    """Run MRP for every plant with something to plan (Celery beat, daily at 02:45).
+    """Run MRP for every plant with something to plan (Celery beat, every 15 minutes).
 
     Unchanged data returns the existing run, so a quiet day adds nothing; a plant with nothing to
     plan is skipped.
