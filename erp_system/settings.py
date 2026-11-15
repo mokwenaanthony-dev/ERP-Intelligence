@@ -181,8 +181,9 @@ CELERY_BEAT_SCHEDULE = {
     # Wave 8a: forecast every plant from the new month (does nothing while ML_SERVICE_URL is unset).
     "forecast-demand-monthly": {"task": "planning.forecast_all_plants",
                                 "schedule": crontab(minute=15, hour=2, day_of_month=1)},
-    # Wave 8b: regenerative MRP every night; unchanged data returns the existing run (idempotent).
-    "mrp-daily": {"task": "planning.mrp_all_plants", "schedule": crontab(minute=45, hour=2)},
+    # Wave 8b/8c: MRP re-checked every 15 minutes (the north star's planning latency target); unchanged
+    # data returns the existing run (fingerprint), so a quiet quarter of an hour costs one snapshot.
+    "mrp-every-15-minutes": {"task": "planning.mrp_all_plants", "schedule": crontab(minute="*/15")},
 }
 
 # How long a client may retry a request with the same Idempotency-Key and get the first answer (ADR 0010).

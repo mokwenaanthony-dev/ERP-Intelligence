@@ -1,4 +1,4 @@
-"""REST API views for planning (forecasts, Wave 8a; MRP, Wave 8b), under ``/api/planning/``.
+"""REST API views for planning (forecasts 8a, MRP 8b, risk and forecast accuracy 8c), under ``/api/planning/``.
 
     GET  demand-history/?plant=&first_period=&months=[&material=]   what customers took, per month
     GET  forecast-runs/[?plant=]  ·  GET forecast-runs/<id>/         stored runs
@@ -9,6 +9,8 @@ Access (``PlanningPermission``): production planners and the warehouse run forec
 purchasing, sales and viewers read them. Forecasting depends on ``ml_service``: if it is off or
 unreachable the API answers 503, if it answers outside the contract 502 (ADR 0014).
 """
+from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -20,9 +22,9 @@ from rest_framework.views import APIView
 from apps.accounts.models import Role
 from apps.accounts.permissions import PlanningPermission
 from apps.masterdata.models import Material
-from apps.organization.models import Plant
+from apps.organization.models import CompanyCode, Plant
 
-from . import ml_client, mrp, services
+from . import ml_client, mrp, risk, services
 from .models import ForecastRun, MaterialPlanning, MRPRun, PlannedOrder
 from .serializers import (ConvertSerializer, ForecastRequestSerializer, ForecastRunListSerializer,
                           ForecastRunSerializer, LatestForecastSerializer, MaterialPlanningSerializer,
@@ -179,3 +181,46 @@ class PlannedOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
                      user=user)
         planned.refresh_from_db()
         return Response({**PlannedOrderSerializer(planned).data, "document_number": number})
+
+
+# --- Supply-chain risk and forecast accuracy (Wave 8c) -----------------------------------------------
+#
+#   GET supplier-risk/?company_code=1000[&months=3][&on=YYYY-MM-DD]   revenue at risk per supplier
+#   GET forecast-accuracy/?plant=1000[&months=6][&on=YYYY-MM-DD]      forecasts against deliveries
+
+class SupplierRiskQuery(serializers.Serializer):
+    company_code = serializers.SlugRelatedField(slug_field="code", queryset=CompanyCode.objects.all())
+    months = serializers.IntegerField(min_value=1, max_value=12, default=3)
+    on = serializers.DateField(required=False)
+
+
+class SupplierRiskView(APIView):
+    permission_classes = [PlanningPermission]
+
+    def get(self, request):
+        query = SupplierRiskQuery(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        on = data.get("on") or timezone.localdate()
+        rows = risk.supplier_risk(data["company_code"], on=on, months=data["months"])
+        return Response({"company_code": data["company_code"].code, "on": on, "months": data["months"],
+                         "revenue_at_risk": sum((r["revenue_at_risk"] for r in rows), Decimal("0")),
+                         "suppliers": rows})
+
+
+class ForecastAccuracyQuery(serializers.Serializer):
+    plant = serializers.SlugRelatedField(slug_field="code", queryset=Plant.objects.all())
+    months = serializers.IntegerField(min_value=1, max_value=24, default=6)
+    on = serializers.DateField(required=False)
+
+
+class ForecastAccuracyView(APIView):
+    permission_classes = [PlanningPermission]
+
+    def get(self, request):
+        query = ForecastAccuracyQuery(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        on = data.get("on") or timezone.localdate()
+        return Response({"plant": data["plant"].code, "on": on, "months": data["months"],
+                         "materials": risk.forecast_accuracy(data["plant"], on=on, months=data["months"])})
