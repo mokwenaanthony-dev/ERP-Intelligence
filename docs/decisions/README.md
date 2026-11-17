@@ -27,3 +27,4 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0014](0014-demand-forecasting-in-a-stateless-ml-service.md) | Demand forecasting in a stateless FastAPI `ml_service`; the ERP keeps histories and forecasts | Accepted | 8a |
 | [0015](0015-mrp-on-dated-requirements-with-planned-orders.md) | MRP nets dated requirements into planned orders; people convert them through the module services | Accepted | 8b |
 | [0016](0016-supply-risk-and-forecast-accuracy-in-the-service-layer.md) | Revenue at risk and forecast accuracy are computed in the service layer; MRP re-checked every 15 minutes | Accepted | 8c |
+| [0017](0017-control-tower-kpis-and-problems-inbox.md) | The control tower calculates KPIs and gathers problems on request, from the modules that already know them | Accepted | 9a |

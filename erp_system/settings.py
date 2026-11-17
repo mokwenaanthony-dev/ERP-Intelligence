@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "apps.crm",
     "apps.srm",
     "apps.planning",
+    "apps.control",
 ]
 
 MIDDLEWARE = [
@@ -209,6 +210,10 @@ ML_SERVICE_URL = config("ML_SERVICE_URL", default="")
 ML_SERVICE_TOKEN = config("ML_SERVICE_TOKEN", default="")
 ML_SERVICE_TIMEOUT = config("ML_SERVICE_TIMEOUT", default=30, cast=float)  # seconds per attempt
 ML_SERVICE_RETRIES = config("ML_SERVICE_RETRIES", default=3, cast=int)  # attempts: the service is stateless
+
+# --- Control tower (Wave 9a): targets of the north-star KPIs (docs/VISION.md) ----------------------------
+# Percentages for on time in full and forecast accuracy (higher is better); days of stock (lower is better).
+CONTROL_TARGETS = {"otif_customers": 95, "otif_suppliers": 95, "forecast_accuracy": 80, "inventory_days": 45}
 
 # --- Logging (design document, section 4) -----------------------------------------
 # Three destinations, all with the same detailed format:

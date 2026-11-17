@@ -25,7 +25,7 @@ HR Admin           hr                          -
 Production Planner production master data,    cost estimates, all master data
                    demand forecasts
 Viewer             -                           sales, inventory, purchasing,
-                                               demand forecasts
+                                               demand forecasts, control tower
 =================  ==========================  ===================================
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -256,4 +256,13 @@ PlanningPermission = RolePermission.build(
     "PlanningPermission",
     write=(Role.PRODUCTION_PLANNER, Role.INVENTORY_MANAGER),
     read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.PURCHASING_OFFICER, Role.SALES_REP, Role.VIEWER),
+)
+
+# Control tower (Wave 9a): read-only KPIs and problems for everyone who works with the business data;
+# HR is left out (its data is not in it). The inbox filters areas by role itself.
+ControlPermission = RolePermission.build(
+    "ControlPermission",
+    write=(),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER, Role.INVENTORY_MANAGER,
+          Role.PRODUCTION_PLANNER, Role.VIEWER),
 )
