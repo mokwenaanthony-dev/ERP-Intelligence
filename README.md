@@ -19,11 +19,11 @@ in step with the books through the ISA-95 model.
 > time; ML predicts, AI recommends, **people decide**. Read the [vision and scorecard](docs/VISION.md).
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, CRM and SRM; an analytics layer with
+cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, a control tower, CRM and SRM; an analytics layer with
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
 800+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** the control tower and AI recommendations (Wave 9).
+dependency auditing. **Next:** recommendations people accept or reject, and an AI agent that explains them (Wave 9b).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -73,7 +73,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 8a | Demand forecasting: monthly demand from deliveries, a stateless FastAPI `ml_service` choosing a method per material by backtest (naive, moving average, seasonal, exponential smoothing, damped trend, Croston), forecasts with 80 % intervals stored as numbered runs | Done |
 | 8b | MRP: planning parameters (make or buy, lot sizes, safety stock, lead time), net requirements from forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders due on the day they are needed, converted into production orders, contract releases or purchase orders | Done |
 | 8c | Supply-chain risk and future state: revenue at risk per supplier (single sources, BOM where-used to open sales orders, grades, contracts) with recommendations; forecast accuracy against actual deliveries; MRP re-checked every 15 minutes | Done |
-| 9 | Control tower and recommendations: one live view of today's and the projected state with the KPIs of the [vision](docs/VISION.md); a problems inbox; recommendations accepted or rejected with the decision recorded; an AI agent on KG-RAG that recommends but never executes | Next |
+| 9a | Control tower: the KPIs of the [vision](docs/VISION.md) (on time in full to customers and from suppliers, forecast accuracy, inventory days, revenue at risk) with targets, status and basis; the future state beside them; a problems inbox from every module, with owners, filtered by role | Done |
+| 9b | Recommendations accepted or rejected with the decision recorded; an AI agent on KG-RAG that explains and recommends but never executes | Next |
 | 10 | Digital supply-chain network: supplier portal and API, customer order status, a shared forecast, anonymised benchmarks | Planned |
 | 11 | PLM and digital twin | Planned |
 
@@ -261,6 +262,22 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 9a delivers
+
+```
+sales, purchasing, stock, finance, forecasts, SRM ─> KPIs: value, target, status, basis   (now)
+open orders, MRP runs, supplier risk ─────────────> order book, late planned orders       (ahead)
+cell state, MRP messages, supplier risk, tickets, ─> problems inbox: severity, document, owner role
+late customer lines, overdue supplier deliveries
+```
+
+| Area | What exists |
+|---|---|
+| KPIs | On time in full to customers and from suppliers (lines due in the last 90 days, completely delivered or received by their date), forecast accuracy (8c), inventory days (stock value against daily cost of sales), revenue at risk (8c). Each with its target (`CONTROL_TARGETS`), a status (good / warning / critical) and the basis it was counted from; "no data" rather than a guessed zero |
+| Ahead | Open order book in the next months, planned orders that should already have started, suppliers at high risk |
+| Problems inbox | Cells down or offline, MRP messages, HIGH and MEDIUM supply risks, overdue tickets, late customer order lines, overdue supplier deliveries; each with area, severity, document, owner role and a stable key; critical first, oldest first; filtered by the reader's role |
+| Command | `python manage.py control_tower --company 1000` ([ADR 0017](docs/decisions/0017-control-tower-kpis-and-problems-inbox.md)) |
 
 ## What Wave 8c delivers
 
@@ -591,6 +608,8 @@ Employee records and salaries are visible to HR only.
 | CRUD | `/api/planning/material-planning/` | `?plant=`; `{"material", "plant", "procurement": "MAKE"\|"BUY", "lot_size": "EX"\|"FX"\|"MN", "lot_quantity", "safety_stock", "lead_time_days", "preferred_supplier"}` |
 | GET, POST | `/api/planning/mrp-runs/` | `?plant=`; POST `{"plant"[, "planning_date", "horizon": 6]}`: 201 new run, 200 the stored run for unchanged data; detail has the requirements list, planned orders and messages |
 | GET | `/api/planning/planned-orders/` | `?plant=&status=OPEN&procurement=MAKE\|BUY` |
+| GET | `/api/control/kpis/` | `?company_code=[&on=][&days=90][&months=3]`: KPIs with target, status and basis, and the future state |
+| GET | `/api/control/problems/` | `?company_code=[&on=][&area=][&severity=critical\|warning]`: the problems inbox for the reader's areas |
 | GET | `/api/planning/supplier-risk/` | `?company_code=[&months=3][&on=]`: revenue at risk per supplier, level and recommendation |
 | GET | `/api/planning/forecast-accuracy/` | `?plant=[&months=6][&on=]`: forecasts against actual deliveries, MAE, bias, accuracy |
 | POST | `/api/planning/planned-orders/<id>/convert/` | `{"on"[, "supplier", "net_price"]}`: MAKE (production planner) → production order; BUY (purchasing officer) → contract release or purchase order |
@@ -779,6 +798,7 @@ apps/
                production orders, confirmations, settlement (orders.py); setup_demo_production
   crm/         Campaigns, leads, opportunities, quotations, service tickets; setup_demo_crm
   srm/         Supplier onboarding, RFQs, contracts, supplier evaluation; setup_demo_srm
+  control/     Control tower: KPIs and the problems inbox; control_tower
   planning/    Demand history, forecast runs, the ml_service client; MRP (mrp.py); risk and forecast accuracy (risk.py); run_forecast, run_mrp, supply_risk, setup_demo_mrp
 ml_service/    FastAPI demand-forecasting service: its own requirements, Dockerfile and tests
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule

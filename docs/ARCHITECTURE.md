@@ -241,7 +241,8 @@ Design rules:
 | 8a ✅ | Demand forecasting: demand history from deliveries, stateless FastAPI `ml_service` (methods chosen by backtest, 80 % intervals), numbered forecast runs | Needs sales history; MRP plans against it |
 | 8b ✅ | MRP: planning parameters, dated netting of forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders converted into production orders, contract releases or purchase orders | Needs forecasts, BOMs, routings and suppliers |
 | 8c ✅ | Supply-chain risk and future state: revenue at risk per supplier with recommendations, forecast accuracy against actuals, MRP every 15 minutes | Needs SRM grades, forecasts and MRP |
-| 9 🔜 | Control tower and recommendations: live current and projected state with KPIs, problems inbox, recommendations with recorded decisions, an AI agent on KG-RAG that recommends but never executes | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
+| 9a ✅ | Control tower: north-star KPIs with targets, status and basis; the future state; a problems inbox from every module with owners, filtered by role | One view of the state of the business |
+| 9b 🔜 | Recommendations with recorded decisions; an AI agent on KG-RAG that explains and recommends but never executes | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
 | 10 🗺️ | Digital supply-chain network: supplier portal and API, customer order status, shared forecast, anonymised benchmarks | Everyone plugged in |
 | 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
 

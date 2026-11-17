@@ -41,15 +41,15 @@ On time in full (to customers, from suppliers) · forecast accuracy · inventory
 - **Idempotent everywhere:** repeating an operation gives the first result
   ([ADR 0010](decisions/0010-idempotency-of-every-state-changing-operation.md)).
 
-## Scorecard (after Wave 8c)
+## Scorecard (after Wave 9a)
 
 | Goal | Built | Next |
 |---|---|---|
 | Everything plugged in | ERP modules on one database; MES and Rust edge agents through the Unified Namespace (MQTT, ISA-95); `ml_service` | Suppliers and customers through a portal and API (Wave 10) |
 | Layers integrated in real time | Outbox → knowledge graph and UNS; live machine state; MRP within 15 minutes of a change | — |
-| Current state | Live cell state, Customer 360, document flow, dashboards | One live control-tower view and a problems inbox (Wave 9) |
-| Future state | Demand forecasts with intervals; MRP projected stock; revenue at risk per supplier | KPIs side by side, today and projected (Wave 9) |
+| Current state | Live cell state, Customer 360, document flow, dashboards; the control tower: KPIs with targets and status, and a problems inbox with owners (9a) | KPI history over time |
+| Future state | Demand forecasts with intervals; MRP projected stock; revenue at risk per supplier; order book and late planned orders beside the KPIs (9a) | — |
 | ML predicts | Demand forecasting by backtested method; forecast accuracy against actuals | Supplier delay, machine failure (later) |
-| AI recommends | MRP planned orders and messages; supplier-risk recommendations; KG-RAG endpoint | Recommendations with expected impact; an AI agent that recommends, never executes (Wave 9) |
-| Stakeholders decide | Planned orders converted by the owning role | Decisions recorded and learned from (Wave 9) |
+| AI recommends | MRP planned orders and messages; supplier-risk recommendations; KG-RAG endpoint | Recommendations with expected impact; an AI agent that recommends, never executes (9b) |
+| Stakeholders decide | Planned orders converted by the owning role; every problem has an owner role (9a) | Decisions recorded and learned from (9b) |
 | Digital supply chain | SRM: onboarding, RFQs, contracts, scorecards | Supplier portal, shared forecast, anonymised benchmarks (Wave 10) |
