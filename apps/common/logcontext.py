@@ -16,6 +16,7 @@ How it fits together:
 * ``error_location`` turns an exception into ``file.py:line in function`` for the place it was
   raised, so a log line says exactly where a business rule fired.
 """
+import contextlib
 import contextvars
 import logging
 import re
@@ -43,6 +44,20 @@ class RequestIdFilter(logging.Filter):
         """Copy the current request ID onto the record so the formatter can print it."""
         record.request_id = request_id.get()
         return True
+
+
+@contextlib.contextmanager
+def command_request_id(prefix: str = "cmd"):
+    """Give a management command one request ID for all its log lines, and restore the previous one after.
+
+    Without the restore, the ID would stay set in the process and appear on the log lines of whatever
+    runs next (a test, or another command in the same shell session).
+    """
+    token = request_id.set(f"{prefix}-{new_request_id()}")
+    try:
+        yield request_id.get()
+    finally:
+        request_id.reset(token)
 
 
 def error_location(exc: BaseException) -> str:

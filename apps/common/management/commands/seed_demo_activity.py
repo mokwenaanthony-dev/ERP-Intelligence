@@ -199,8 +199,10 @@ class Command(BaseCommand):
                     items.append(sales.OrderItemInput(material, quantity))
             if not items:
                 continue
+            # Customers ask for delivery within three days; the warehouse ships in two (on time in full).
             order = sales.create_sales_order(sales_organization=self.sales_org, customer=customer,
-                                             order_date=day(order_day), items=items)
+                                             order_date=day(order_day), requested_delivery_date=day(order_day + 3),
+                                             items=items)
             sales.confirm_order(order)
             delivery = sales.post_delivery(order, delivery_date=day(order_day + 2), storage_location=self.store)
             sales.post_invoice(delivery, invoice_date=day(order_day + 3))

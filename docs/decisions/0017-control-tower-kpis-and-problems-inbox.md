@@ -17,6 +17,10 @@ down, MRP messages, supply risks, overdue tickets), but nobody saw them together
   lines due in the last 90 days"), so a number can be checked. Targets live in
   `settings.CONTROL_TARGETS`; status rules are simple and written down (good / warning / critical).
   A KPI with nothing to measure shows "no data", never a guessed zero.
+- **On time needs a promised date** (v0.19.1): customer on-time-in-full counts only order lines with
+  a requested delivery date. The first version fell back to the order date, which made every
+  undated order "late" (0 of 76 in the Docker demo); lines without a date are now counted
+  separately and named in the basis.
 - **The future state beside them:** the open order book for the coming months, planned orders that
   should already have started, suppliers at high risk.
 - **A problems inbox from existing detectors**, not new rules: cell state (UNS), MRP messages, supplier

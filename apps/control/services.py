@@ -38,7 +38,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounts.models import Role
@@ -91,21 +91,27 @@ def _higher_is_better(value: Decimal | None, target: Decimal) -> str | None:
 
 
 def otif_customers(company_code, start: date, end: date) -> dict:
-    """Sales order lines due in [start, end) delivered in full by their requested date."""
-    lines = (SalesOrderItem.objects.filter(order__company_code=company_code)
-             .exclude(order__status=SalesOrder.Status.CANCELLED)
-             .filter(Q(order__requested_delivery_date__gte=start, order__requested_delivery_date__lt=end)
-                     | Q(order__requested_delivery_date__isnull=True, order__order_date__gte=start,
-                         order__order_date__lt=end))
-             .select_related("order"))
+    """Sales order lines due in [start, end) delivered in full by their requested date.
+
+    Only lines with a requested delivery date are measured: without a promised date a delivery
+    cannot be on time or late. Lines ordered in the window without one are counted separately
+    (``without_date``) so the gap shows instead of being hidden (v0.19.1).
+    """
+    orders = (SalesOrderItem.objects.filter(order__company_code=company_code)
+              .exclude(order__status=SalesOrder.Status.CANCELLED))
+    lines = orders.filter(order__requested_delivery_date__gte=start,
+                          order__requested_delivery_date__lt=end).select_related("order")
     due = on_time = 0
     for line in lines:
-        due_date = line.order.requested_delivery_date or line.order.order_date
         delivered = line.delivery_items.filter(delivery__status=Delivery.Status.POSTED,
-                                               delivery__delivery_date__lte=due_date).aggregate(q=Sum("quantity"))["q"]
+                                               delivery__delivery_date__lte=line.order.requested_delivery_date
+                                               ).aggregate(q=Sum("quantity"))["q"]
         due += 1
         on_time += (delivered or 0) >= line.quantity
-    return {"lines": due, "on_time_in_full": on_time, "value": _percent(on_time, due)}
+    without_date = orders.filter(order__requested_delivery_date__isnull=True, order__order_date__gte=start,
+                                 order__order_date__lt=end).count()
+    return {"lines": due, "on_time_in_full": on_time, "without_date": without_date,
+            "value": _percent(on_time, due)}
 
 
 def otif_suppliers(company_code, start: date, end: date) -> dict:
@@ -167,7 +173,9 @@ def kpis(company_code, *, on: date, days: int = 90, months: int = 3) -> dict:
         {"key": "otif_customers", "name": "On time in full, customers", "unit": "%", "value": customers["value"],
          "target": targets["otif_customers"], "status": _higher_is_better(customers["value"],
                                                                           targets["otif_customers"]),
-         "basis": f"{customers['on_time_in_full']} of {customers['lines']} order lines due in the last {days} days"},
+         "basis": f"{customers['on_time_in_full']} of {customers['lines']} order lines due in the last {days} days"
+                  + (f"; {customers['without_date']} line(s) without a requested date not measured"
+                     if customers["without_date"] else "")},
         {"key": "otif_suppliers", "name": "On time in full, suppliers", "unit": "%", "value": suppliers["value"],
          "target": targets["otif_suppliers"], "status": _higher_is_better(suppliers["value"],
                                                                           targets["otif_suppliers"]),
