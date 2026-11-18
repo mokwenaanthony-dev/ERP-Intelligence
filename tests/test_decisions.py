@@ -318,7 +318,7 @@ def test_graph_facts_come_from_the_problems_subject(tower, make_user, monkeypatc
     ("supplier-risk:V100:HIGH", "V100", "", ("BusinessPartner", "V100")),
     ("ticket:TK1", "TK1", "", ("ServiceTicket", "1000/TK1")),
     ("cell:1000/PRESS3:DOWN:20261115T0600", "PRESS3", "", ("Cell", "1000/PRESS3")),
-    ("mrp:MR1:5", "MR1", "MRP: RM-2001", ("Material", "RM-2001")),
+    ("mrp:1000/RM-2001:20261118", "MR1", "MRP: RM-2001", ("Material", "RM-2001")),
     ("other:1", "x", "", None),
 ])
 def test_graph_subjects(tower, key, document, title, expected):

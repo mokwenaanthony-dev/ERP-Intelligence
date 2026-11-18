@@ -50,7 +50,7 @@ from .models import DeliveryNotice, DeliveryNoticeItem, ForecastShare, OrderConf
 
 logger = logging.getLogger(__name__)
 
-ZERO = Decimal("0")
+ZERO = Decimal("0.000")  # quantities keep their scale in every answer (ADR 0008)
 THOUSANDTH = Decimal("0.001")
 VISIBLE_PO = [PurchaseOrder.Status.RELEASED, PurchaseOrder.Status.COMPLETED, PurchaseOrder.Status.CANCELLED]
 

@@ -64,6 +64,12 @@ migration). The recommendation names that order (`MR00000004/3`), what convertin
 the conversion endpoint. A converted order points at its document instead. A BUY order is owned by
 purchasing, a MAKE order by the planner, the same split as the conversion itself (ADR 0015).
 
+**v0.21.1.** MRP problems were keyed by the run that found them (`mrp:MR00000004:16`). MRP replans
+every 15 minutes when data changes, so every replan gave the same problem a new key, and a
+decision did not carry over. They are now keyed by what they are about: plant, material and due
+date (`mrp:1000/FG-4001:20261118`), or `no-bom` for a missing BOM. A planned order moved to another
+date is a new problem.
+
 ## Alternatives considered
 
 - **Letting the AI act (an agent with tools that converts orders or sends emails):** this is exactly
