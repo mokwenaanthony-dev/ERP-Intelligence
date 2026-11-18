@@ -218,6 +218,9 @@ class MRPMessage(models.Model):
     run = models.ForeignKey(MRPRun, on_delete=models.CASCADE, related_name="messages")
     material = models.ForeignKey("masterdata.Material", on_delete=models.PROTECT, related_name="+")
     text = models.CharField(max_length=200)
+    planned_order = models.ForeignKey(PlannedOrder, on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name="messages",
+                                      help_text="The late planned order the message is about (v0.20.1), if any.")
 
     class Meta:
         ordering = ["run", "material__number", "id"]

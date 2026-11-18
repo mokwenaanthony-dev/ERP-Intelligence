@@ -196,8 +196,26 @@ def test_off_by_default_the_facts_are_still_given_with_sources(tower, make_user,
         "active": False, "why": "off: an administrator has not switched it on"}
     ids = [f["id"] for f in result["facts"]]
     assert ids == ["F1", "F2", "F3", "F4", "F5"] and all(f["source"] for f in result["facts"])
-    assert "On time in full, customers" in result["facts"][3]["text"]
+    assert result["facts"][3]["text"].startswith(
+        "On time in full, customers is 50.0 % against a target of 95 % (status critical); basis: 1 of 2")
     assert result["graph"] == "knowledge graph is off"
+
+
+def test_a_kpi_without_a_value_reads_not_measured(tower, make_user, monkeypatch, settings):
+    """v0.20.1: "is not measured (target 95 %)", not "is not measured % against a target of 95"."""
+    settings.GRAPH_ENABLED = False
+    real = services.kpis
+
+    def no_value(company_code, **kwargs):
+        result = real(company_code, **kwargs)
+        for kpi in result["kpis"]:
+            kpi.update(value=None, status=None)
+        return result
+
+    monkeypatch.setattr(services, "kpis", no_value)
+    facts = assistant.explain(tower.company, key=late_order_key(tower), user=make_user(Role.SALES_REP), on=ON,
+                              now=NOW)["facts"]
+    assert facts[3]["text"].startswith("On time in full, customers is not measured (target 95 %); basis:")
 
 
 def test_only_an_administrator_switches_it_on_and_a_key_is_needed(tower, client_for):

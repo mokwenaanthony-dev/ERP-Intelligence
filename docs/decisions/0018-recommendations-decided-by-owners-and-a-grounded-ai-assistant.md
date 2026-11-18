@@ -1,6 +1,6 @@
 # 0018. Owners decide recommendations once; the AI assistant explains from cited facts and never executes
 
-- **Status:** Accepted, 2026-11-18 (Wave 9b)
+- **Status:** Accepted, 2026-11-18 (Wave 9b); amended in v0.20.1 (MRP recommendations name the planned order)
 
 ## Context
 
@@ -56,6 +56,13 @@ an AI explanation has to show what it is based on.
   `ast` (`python manage.py business_rules`), and a test fails when the file and the code disagree.
   The rules are the part of an ERP worth more than its code, so they are written down where people
   can read them.
+
+**v0.20.1.** The first MRP recommendations only repeated the MRP message ("act on the MRP
+message"), which the Docker output showed was no help. An MRP message now points at the late
+planned order it is about (`MRPMessage.planned_order`; runs stored earlier are linked by the
+migration). The recommendation names that order (`MR00000004/3`), what converting makes of it, and
+the conversion endpoint. A converted order points at its document instead. A BUY order is owned by
+purchasing, a MAKE order by the planner, the same split as the conversion itself (ADR 0015).
 
 ## Alternatives considered
 

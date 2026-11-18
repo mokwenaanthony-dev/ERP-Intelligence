@@ -159,9 +159,12 @@ def facts_for(company_code, *, key: str, user, on: date, now=None) -> tuple[dict
     ]
     if impact["kpi"]:
         kpi = next(k for k in services.kpis(company_code, on=on)["kpis"] if k["key"] == impact["kpi"])
-        facts.append({"text": f"{kpi['name']} is {kpi['value'] if kpi['value'] is not None else 'not measured'}"
-                              f" {kpi['unit']} against a target of {kpi['target']} (status {kpi['status'] or 'none'});"
-                              f" basis: {kpi['basis']}.", "source": f"control-tower KPI {kpi['key']}"})
+        # "is not measured (target 95 %)", never "is not measured % against ..." (v0.20.1).
+        measured = (f"is {kpi['value']} {kpi['unit']} against a target of {kpi['target']} {kpi['unit']} "
+                    f"(status {kpi['status']})" if kpi["value"] is not None
+                    else f"is not measured (target {kpi['target']} {kpi['unit']})")
+        facts.append({"text": f"{kpi['name']} {measured}; basis: {kpi['basis']}.",
+                      "source": f"control-tower KPI {kpi['key']}"})
     kind = key.split(":", 1)[0]
     history = Decision.objects.filter(company_code=company_code, kind=kind)
     accepted = history.filter(outcome=Decision.Outcome.ACCEPTED).count()

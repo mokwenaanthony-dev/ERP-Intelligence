@@ -255,6 +255,39 @@ def _cell_advice(work_center, state: str) -> dict:
                    else "No production order waits on it yet")
 
 
+def _mrp_advice(message) -> dict:
+    """Recommendation for an MRP message: convert the late planned order it is about (v0.20.1).
+
+    Names the planned order (run/number), what converting makes of it (a production order for MAKE;
+    a contract release or purchase order for BUY), and the conversion endpoint. A planned order that
+    was already converted points at its document instead. A message without a planned order (MAKE
+    without a BOM) asks for the BOM.
+    """
+    planned, material = message.planned_order, message.material.number
+    if planned is None:
+        return _advice(f"Create and activate a BOM for {material} at plant {message.run.plant.code}; the next "
+                       "MRP run (within 15 minutes) then plans its components.",
+                       "Without a BOM, MRP cannot plan what the product is made of.", None, None,
+                       "Components planned in time")
+    label = f"{planned.run.run_number}/{planned.number}"
+    what = f"{planned.quantity} x {material}, due {planned.due_date}"
+    if planned.status == "CONVERTED":
+        return _advice(f"Planned order {label} is already {planned.document_number}: expedite that order.",
+                       f"It should have started on {planned.start_date}.", "otif_customers", None,
+                       f"Supply of {what} in time")
+    if planned.procurement == "BUY":
+        action = (f"Convert planned order {label} ({what}) into a purchase order now (a release if a contract "
+                  "covers it) and ask the supplier to expedite; or move the demand it covers.")
+    else:
+        action = (f"Convert planned order {label} ({what}) into a production order and release it today; "
+                  "or move the demand it covers.")
+    action += f" API: POST /api/planning/planned-orders/{planned.pk}/convert/"
+    late = (message.run.planning_date - planned.start_date).days
+    return _advice(action, f"It should have started on {planned.start_date} ({late} day(s) before the MRP run); "
+                           "every day it waits, the demand it covers is served later.", "otif_customers", None,
+                   f"Supply of {what} in time for its demand")
+
+
 def _late_order_advice(line, open_quantity: Decimal) -> dict:
     """Recommendation for a late customer order line: deliver from stock if there is enough, else re-promise."""
     from apps.inventory.services import plant_stock
@@ -299,14 +332,13 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
             wc.code, Role.PRODUCTION_PLANNER, started.date(), lambda wc=wc, state=cell.state: _cell_advice(wc, state))
 
     for message in (MRPMessage.objects.filter(run__in=_latest_runs(company_code))
-                    .select_related("run__plant", "material")):
+                    .select_related("run__plant", "material", "planned_order")):
+        planned = message.planned_order
+        # A BUY order is converted by purchasing, a MAKE order (and a missing BOM) by the planner (8b).
+        owner = Role.PURCHASING_OFFICER if planned and planned.procurement == "BUY" else Role.PRODUCTION_PLANNER
         add("planning", WARNING, f"mrp:{message.run.run_number}:{message.pk}",
-            f"MRP: {message.material.number}", message.text, message.run.run_number, Role.PRODUCTION_PLANNER,
-            message.run.planning_date,
-            lambda m=message: _advice(f"Act on the MRP message for {m.material.number}: {m.text}",
-                                      "MRP found it when netting demand against supply; left alone, demand "
-                                      "is covered late or not at all.", "otif_customers", None,
-                                      "Supply in time for the demand it covers"))
+            f"MRP: {message.material.number}", message.text, message.run.run_number, owner,
+            message.run.planning_date, lambda m=message: _mrp_advice(m))
 
     for row in risk.supplier_risk(company_code, on=on):
         if row["risk"] in ("HIGH", "MEDIUM"):
