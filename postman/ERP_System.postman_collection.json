@@ -2886,6 +2886,288 @@
       ]
     },
     {
+      "name": "Decisions and AI assistant (owner roles: sales_rep, purchasing_officer, production_planner; Wave 9b)",
+      "item": [
+        {
+          "name": "1. Recommendations still open (your areas)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/recommendations/?company_code=1000&status=open",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "recommendations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Accept a recommendation (owner role; copy a key from 1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/decisions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "decisions",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"key\": \"late-order:SO00000002/10\",\n  \"outcome\": \"ACCEPTED\",\n  \"reason\": \"Delivering from stock today\"\n}"
+            },
+            "description": "201 recorded; 200 the same decision again (the first is returned); 409 a different decision exists; 403 not the owner role."
+          }
+        },
+        {
+          "name": "3. Reject a recommendation (a reason is required)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/decisions/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "decisions",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"key\": \"supplier-risk:V100:HIGH\",\n  \"outcome\": \"REJECTED\",\n  \"reason\": \"Second source already in an RFQ\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Decision log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/decisions/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "decisions",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Track record per kind (accepted, resolved)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/acceptance/?company_code=1000&days=90",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "acceptance",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                },
+                {
+                  "key": "days",
+                  "value": "90"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. Is the AI assistant on?",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/assistant/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "assistant",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. Switch the AI assistant on (login as admin; needs AI_ASSISTANT_API_KEY)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/assistant/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "assistant",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true\n}"
+            },
+            "description": "Off by default: turning it on sends business facts to the provider. Administrators only."
+          }
+        },
+        {
+          "name": "8. Explain a problem: grounded facts (+ AI answer when on)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/control/explain/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "control",
+                "explain",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"key\": \"late-order:SO00000002/10\",\n  \"question\": \"Can we still deliver this week?\"\n}"
+            },
+            "description": "Facts are numbered with their sources; the AI answer cites them and never executes anything."
+          }
+        }
+      ]
+    },
+    {
       "name": "HR and payroll (login as hr_admin), controlling reports (login as accountant)",
       "item": [
         {

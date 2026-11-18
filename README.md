@@ -18,12 +18,37 @@ in step with the books through the ISA-95 model.
 > **The goal:** everything connected; the current *and future* state of the business known in real
 > time; ML predicts, AI recommends, **people decide**. Read the [vision and scorecard](docs/VISION.md).
 
+### Not a replacement for SAP: a reference for the AI-ready ERP
+
+What SAP and its peers sell is not code but decades of business rules, legal localisation and a
+vendor that answers for the result; no developer, and no AI alone, replaces that. This project shows
+how an ERP becomes intelligent in the era of AI agents, the direction the large vendors are taking,
+at a scale you can read and run: connected data, predictions with a track record, recommendations
+with reasons and expected impact that **their owner accepts or rejects on the record**, and an AI
+assistant that **cites its facts and never acts**. A small or mid-sized company can adopt it in
+steps, as its own system or (planned) as an intelligence layer beside the ERP it already runs.
+
+| Problem | What the system does |
+|---|---|
+| Data trapped in modules, reconciled by hand | One Universal Journal; a knowledge graph of how everything connects |
+| Decisions on last month's reports | KPIs with targets and their basis on request; a problems inbox with an owner per problem |
+| No view of what is coming | Forecasts with ranges; MRP within 15 minutes of a change; revenue at risk per supplier |
+| Shop floor and finance out of step | Machine state and confirmations from the MES reach the books in seconds |
+| AI pilots nobody trusts | Recommendations decided and recorded by their owner; an assistant grounded in cited facts, off by default |
+| Rules known only to a few people | [269 business rules](docs/RULES.md) catalogued from the code, kept true by a test |
+
+**For** small and mid-sized manufacturers and distributors (South African VAT, payroll, B-BBEE and
+POPIA built in), ERP consultants and partners bringing AI to clients without a rip-and-replace, and
+developers learning how enterprise systems and AI fit together. Interested in partnering? The
+[vision](docs/VISION.md), [architecture](docs/ARCHITECTURE.md) and
+[decision records](docs/decisions/README.md) show what exists, what is still a gap, and where to join.
+
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, a control tower, CRM and SRM; an analytics layer with
+cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, a control tower with recommendations people decide, a grounded AI assistant, CRM and SRM; an analytics layer with
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
-800+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** recommendations people accept or reject, and an AI agent that explains them (Wave 9b).
+900+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
+dependency auditing. **Next:** the digital supply-chain network and a side-by-side mode beside an existing ERP (Wave 10).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -74,9 +99,9 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 8b | MRP: planning parameters (make or buy, lot sizes, safety stock, lead time), net requirements from forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders due on the day they are needed, converted into production orders, contract releases or purchase orders | Done |
 | 8c | Supply-chain risk and future state: revenue at risk per supplier (single sources, BOM where-used to open sales orders, grades, contracts) with recommendations; forecast accuracy against actual deliveries; MRP re-checked every 15 minutes | Done |
 | 9a | Control tower: the KPIs of the [vision](docs/VISION.md) (on time in full to customers and from suppliers, forecast accuracy, inventory days, revenue at risk) with targets, status and basis; the future state beside them; a problems inbox from every module, with owners, filtered by role | Done |
-| 9b | Recommendations accepted or rejected with the decision recorded; an AI agent on KG-RAG that explains and recommends but never executes | Next |
-| 10 | Digital supply-chain network: supplier portal and API, customer order status, a shared forecast, anonymised benchmarks | Planned |
-| 11 | PLM and digital twin | Planned |
+| 9b | Recommendations with reasons and expected impact, accepted or rejected once by their owner (idempotent) with a track record; an AI assistant that explains from cited facts (KG-RAG), never executes and is off until an administrator switches it on; the [business-rules catalogue](docs/RULES.md) generated from the code | Done |
+| 10 | Digital supply-chain network: supplier portal and API, customer order status, a shared forecast, anonymised benchmarks; side-by-side mode (an adapter reading an existing ERP) | Next |
+| 11 | PLM and digital twin; the demo company as a model-company template | Planned |
 
 ## What Wave 0 delivers
 
@@ -262,6 +287,24 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 9b delivers
+
+```
+problem ─> recommendation: action, reason, expected impact (KPI, R value)
+        ─> owner accepts or rejects (once; a rejection needs a reason) ─> decision log ─> track record
+        ─> explain: numbered facts with sources (inbox, KPIs, decisions, graph) ─> AI answer citing them (if on)
+service-layer rules ─> docs/RULES.md (generated, checked by a test)
+```
+
+| Area | What exists |
+|---|---|
+| Recommendations | Every problem in the inbox carries an action, a reason and its expected impact: deliver a late line now when the stock is there, or agree a new date; chase an overdue supplier and buy the shortfall elsewhere after 2 working days; move a down cell's waiting operations to another cell on its line; qualify a second source for a single-source supplier |
+| Decisions | `POST /api/control/decisions/`: only the owning role (or an administrator) decides; a rejection needs a reason; one decision per problem: the same again returns the first (200), a different one is refused (409); the recommendation and its impact are copied into the record |
+| Track record | `GET /api/control/acceptance/`: per kind, decided, accepted, rejected, resolved since (the problem has left the inbox) and the latest rejection reasons |
+| AI assistant | `POST /api/control/explain/`: numbered facts with their sources, including the problem's neighbourhood in the knowledge graph limited to the user's role; with the assistant on, the model's explanation, which must cite the facts (an answer citing none is marked not grounded); no tools, never executes; off until an administrator switches it on **and** a provider key is in `.env`; answers stored by fingerprint, so asking again costs nothing |
+| Rules catalogue | [docs/RULES.md](docs/RULES.md): 269 business rules found in the service layer with `ast`, with their message, module and function; `python manage.py business_rules` regenerates it and a test fails when it is stale |
+| Commands | `control_tower` (now with recommendations, keys and the track record), `decide --company 1000 --key ... --accept --user sales_rep`, `explain --company 1000 --key ... --user sales_rep` ([ADR 0018](docs/decisions/0018-recommendations-decided-by-owners-and-a-grounded-ai-assistant.md)) |
 
 ## What Wave 9a delivers
 

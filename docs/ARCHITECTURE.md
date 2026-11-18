@@ -112,7 +112,7 @@ edges, so they can be traversed, visualised and handed to an AI agent as grounde
   [`docs/ONTOLOGY.md`](ONTOLOGY.md) ✅ (version 1.5 since Wave 7b, versioned with the code), and Neo4j enforces a uniqueness
   constraint on the business key of every label ✅.
 
-## AI readiness: knowledge-graph retrieval (KG-RAG) (retrieval ✅, agent 🗺️)
+## AI readiness: knowledge-graph retrieval (KG-RAG) (retrieval ✅, assistant ✅)
 
 Enterprise AI agents give unreliable answers when they guess at SQL over dozens of tables. Grounding
 them in the graph means an answer can be traced back to the real orders, invoices and partners it came
@@ -130,6 +130,15 @@ Two rules carry over from the core:
   returns. Salaries, for example, are visible to HR only today and must stay that way for an agent.
 - **The graph explains, the core decides.** Agents read from the graph. Any change still goes through
   the service layer and its business rules.
+
+**The control-tower assistant (Wave 9b, [ADR 0018](decisions/0018-recommendations-decided-by-owners-and-a-grounded-ai-assistant.md)).**
+For one problem in the inbox it gathers numbered facts, each with its source: the problem, the
+recommendation and its expected impact, the KPI with its basis, the track record of this kind of
+recommendation, and the problem's neighbourhood in the graph, filtered by the user's role. The model
+must cite those facts (`[F2]`, `[G1]`). Citations are checked, and an answer that cites nothing is
+marked not grounded. The assistant has no tools and cannot act. It is off until an administrator
+switches it on and a provider key is set. With it off, the same facts come back without prose.
+Answers are stored by the fingerprint of their facts, so asking again costs nothing.
 
 ## Unified Namespace and knowledge graph: one vocabulary ✅
 
@@ -242,8 +251,8 @@ Design rules:
 | 8b ✅ | MRP: planning parameters, dated netting of forecasts and sales orders against stock and open orders, BOM explosion by low-level code, planned orders converted into production orders, contract releases or purchase orders | Needs forecasts, BOMs, routings and suppliers |
 | 8c ✅ | Supply-chain risk and future state: revenue at risk per supplier with recommendations, forecast accuracy against actuals, MRP every 15 minutes | Needs SRM grades, forecasts and MRP |
 | 9a ✅ | Control tower: north-star KPIs with targets, status and basis; the future state; a problems inbox from every module with owners, filtered by role | One view of the state of the business |
-| 9b 🔜 | Recommendations with recorded decisions; an AI agent on KG-RAG that explains and recommends but never executes | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
-| 10 🗺️ | Digital supply-chain network: supplier portal and API, customer order status, shared forecast, anonymised benchmarks | Everyone plugged in |
-| 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management | Needs production and MES data |
+| 9b ✅ | Recommendations with reasons and expected impact; owners' decisions recorded once (idempotent) with a track record; a grounded AI assistant (KG-RAG, cited facts, off by default, never executes); the [business-rules catalogue](RULES.md) | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
+| 10 🔜 | Digital supply-chain network: supplier portal and API, customer order status, shared forecast, anonymised benchmarks; side-by-side mode (an adapter reading an existing ERP) | Everyone plugged in, without a rip-and-replace |
+| 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management; the demo company packaged as a model-company template | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.
