@@ -40,7 +40,9 @@ steps, as its own system or (planned) as an intelligence layer beside the ERP it
 
 **For** small and mid-sized manufacturers and distributors (South African VAT, payroll, B-BBEE and
 POPIA built in), ERP consultants and partners bringing AI to clients without a rip-and-replace, and
-developers learning how enterprise systems and AI fit together. Interested in partnering? The
+developers learning how enterprise systems and AI fit together. **See it work:** the
+[demo runbook](docs/DEMO.md) shows every wave on the Docker stack, with the test that proves each
+step. Interested in partnering? The
 [vision](docs/VISION.md), [architecture](docs/ARCHITECTURE.md) and
 [decision records](docs/decisions/README.md) show what exists, what is still a gap, and where to join.
 

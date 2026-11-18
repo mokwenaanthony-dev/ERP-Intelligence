@@ -345,3 +345,21 @@ def test_runs_stored_before_v0_20_1_are_linked_by_the_migration(plant):
     linked = sorted((m.material.number, m.planned_order.number) for m in run.messages.select_related(
         "material", "planned_order"))
     assert linked == [("FG-4001", 1), ("SF-3001", 4)]
+
+
+def test_a_decision_on_an_mrp_problem_survives_the_next_run(plant, demo, make_user):
+    """v0.21.1: MRP problems are keyed by plant, material and due date, not by the run that found them."""
+    from apps.control import decisions, services
+
+    first, _ = mrp.run_mrp(plant, planning_date=TODAY)
+    late = next(p for p in services.problems(demo.company, on=TODAY) if p["title"] == "MRP: FG-4001")
+    assert late["key"] == "mrp:1000/FG-4001:20261114"
+    decisions.decide(demo.company, key=late["key"], outcome="ACCEPTED", user=make_user(Role.PRODUCTION_PLANNER),
+                     on=TODAY)
+    MaterialPlanning.objects.filter(material__number="RM-2002").update(safety_stock=D("250"))  # unrelated change
+    second, created = mrp.run_mrp(plant, planning_date=TODAY)
+    assert created and second.run_number != first.run_number  # MRP replanned
+    again = next(r for r in decisions.recommendations(demo.company, on=TODAY) if r["title"] == "MRP: FG-4001")
+    assert again["key"] == late["key"] and again["decision"]["outcome"] == "ACCEPTED"
+    keys = [p["key"] for p in services.problems(demo.company, on=TODAY)]
+    assert len(keys) == len(set(keys))

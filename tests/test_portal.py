@@ -335,3 +335,8 @@ def test_setup_demo_portal_is_idempotent(demo, make_user):
     text = out.getvalue()
     assert "Created portal user highveld" in text and "Kept portal user highveld" in text
     assert "already shared" in text and PartnerAccess.objects.count() == 2
+    # v0.21.1: Highveld gets one open line to confirm, once
+    assert "released to Highveld: 50 x TG-1001" in text and "already has an open line to confirm" in text
+    access = services.access_for(PartnerAccess.objects.get(user__username="highveld").user)
+    open_orders = [o for o in services.purchase_orders(access) if o["status"] == "RELEASED"]
+    assert len(open_orders) == 1 and open_orders[0]["items"][0]["open"] == D("50.000")

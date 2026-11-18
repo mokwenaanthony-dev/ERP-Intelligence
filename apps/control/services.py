@@ -355,12 +355,20 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
             f"Cell {wc.code} is {cell.state.lower()}", f"Plant {wc.plant.code}, since {started}",
             wc.code, Role.PRODUCTION_PLANNER, started.date(), lambda wc=wc, state=cell.state: _cell_advice(wc, state))
 
+    mrp_keys: set[str] = set()
     for message in (MRPMessage.objects.filter(run__in=_latest_runs(company_code))
-                    .select_related("run__plant", "material", "planned_order")):
+                    .select_related("run__plant", "material", "planned_order").order_by("id")):
         planned = message.planned_order
         # A BUY order is converted by purchasing, a MAKE order (and a missing BOM) by the planner (8b).
         owner = Role.PURCHASING_OFFICER if planned and planned.procurement == "BUY" else Role.PRODUCTION_PLANNER
-        add("planning", WARNING, f"mrp:{message.run.run_number}:{message.pk}",
+        # Keyed by what the problem is about, not by the run (v0.21.1): MRP replans every 15 minutes
+        # when data changes, and a decision about "FG-4001 due 18 November" must survive the next run.
+        key = (f"mrp:{message.run.plant.code}/{message.material.number}:"
+               + (f"{planned.due_date:%Y%m%d}" if planned else "no-bom"))
+        while key in mrp_keys:  # two late orders of one material due the same day (rare): keep keys unique
+            key += "+"
+        mrp_keys.add(key)
+        add("planning", WARNING, key,
             f"MRP: {message.material.number}", message.text, message.run.run_number, owner,
             message.run.planning_date, lambda m=message: _mrp_advice(m))
 
