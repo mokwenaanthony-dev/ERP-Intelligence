@@ -188,7 +188,8 @@ def model(monkeypatch, settings):
     return model
 
 
-def test_off_by_default_the_facts_are_still_given_with_sources(tower, make_user):
+def test_off_by_default_the_facts_are_still_given_with_sources(tower, make_user, settings):
+    settings.GRAPH_ENABLED = False  # CI runs with Neo4j on; this test is about the assistant being off
     result = assistant.explain(tower.company, key=late_order_key(tower), user=make_user(Role.SALES_REP), on=ON,
                                now=NOW)
     assert result["answer"] is None and result["assistant"] == {
