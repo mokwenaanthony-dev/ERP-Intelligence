@@ -292,3 +292,56 @@ def test_the_nightly_task(plant):
 
     first = tasks.mrp_all_plants()
     assert first["created"] == 1 and tasks.mrp_all_plants()["unchanged"] == 1
+
+
+# --- v0.20.1: messages point at their planned orders; the control tower proposes converting them ------------
+
+def test_the_planner_records_which_proposal_a_late_message_is_about():
+    result = mrp.plan(snap({"X": material(stock="5", safety="20", lead=3)}))
+    assert result.message_orders == {0: 1}  # message 0 is about proposal 1
+
+
+def test_late_messages_point_at_their_planned_orders(plant):
+    run, _ = mrp.run_mrp(plant, planning_date=TODAY)
+    messages = run.messages.select_related("material", "planned_order")
+    linked = {(m.material.number, m.planned_order.number) for m in messages}
+    assert linked == {("FG-4001", 1), ("SF-3001", 4)}  # the two late MAKE orders of the demo plan
+
+
+def test_mrp_recommendations_name_the_planned_order_and_its_owner(plant, demo, make_user):
+    from apps.control import decisions, services
+
+    MaterialPlanning.objects.filter(material__number="RM-2002").update(safety_stock=D("2500"))  # short today: BUY
+    run, _ = mrp.run_mrp(plant, planning_date=TODAY)
+    found = {p["title"]: p for p in services.problems(demo.company, on=TODAY) if p["area"] == "planning"}
+    make, buy = found["MRP: FG-4001"], found["MRP: RM-2002"]
+    first = run.planned_orders.get(number=1)
+    assert make["recommendation"]["action"] == (
+        "Convert planned order MR00000001/1 (50.000 x FG-4001, due 2026-11-14) into a production order and "
+        f"release it today; or move the demand it covers. API: POST /api/planning/planned-orders/{first.pk}/convert/")
+    assert make["owner_role"] == Role.PRODUCTION_PLANNER and "should have started on 2026-11-09" in \
+        make["recommendation"]["reason"]
+    assert buy["owner_role"] == Role.PURCHASING_OFFICER and "into a purchase order now" in \
+        buy["recommendation"]["action"]
+    decision, created = decisions.decide(demo.company, key=buy["key"], outcome="ACCEPTED",
+                                         user=make_user(Role.PURCHASING_OFFICER), on=TODAY)
+    assert created and decision.title == "MRP: RM-2002"
+
+    number = mrp.convert(first, on=TODAY)  # the planner acts on the recommendation
+    again = next(p for p in services.problems(demo.company, on=TODAY) if p["key"] == make["key"])
+    assert again["recommendation"]["action"] == f"Planned order MR00000001/1 is already {number}: expedite that order."
+
+
+def test_runs_stored_before_v0_20_1_are_linked_by_the_migration(plant):
+    import importlib
+
+    from django.apps import apps
+
+    run, _ = mrp.run_mrp(plant, planning_date=TODAY)
+    run.messages.update(planned_order=None)  # as stored by v0.20.0
+    step = importlib.import_module("apps.planning.migrations.0003_message_planned_order")
+    step.link_existing(apps, None)
+    step.link_existing(apps, None)  # idempotent: nothing changes the second time
+    linked = sorted((m.material.number, m.planned_order.number) for m in run.messages.select_related(
+        "material", "planned_order"))
+    assert linked == [("FG-4001", 1), ("SF-3001", 4)]

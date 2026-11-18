@@ -248,6 +248,9 @@ class Plan:
     lines: dict[str, list[dict]] = field(default_factory=dict)
     proposals: list[Proposal] = field(default_factory=list)
     messages: list[tuple[str, str]] = field(default_factory=list)
+    # Message index -> number (1-based) of the proposal it is about, so the control tower can name the
+    # planned order and propose converting it (v0.20.1).
+    message_orders: dict[int, int] = field(default_factory=dict)
 
 
 def low_level_codes(materials: list[str], boms: dict) -> dict[str, int]:
@@ -313,6 +316,7 @@ def plan(snap: dict) -> Plan:
             late = start < planning_date
             result.proposals.append(Proposal(number, data["procurement"], quantity, start, due, late))
             if late:
+                result.message_orders[len(result.messages)] = len(result.proposals)
                 result.messages.append((number, f"Planned order due {due} should have started on {start}: "
                                                 f"expedite or move the demand."))
             totals[month_start(due)]["planned"] += quantity
@@ -394,8 +398,10 @@ def _store(plant, planning_date, horizon, snap, result: Plan, digest, user) -> M
         PlannedOrder(run=run, number=index, material=by_number[p.material], procurement=p.procurement,
                      quantity=p.quantity, start_date=p.start_date, due_date=p.due_date, is_late=p.is_late)
         for index, p in enumerate(result.proposals, start=1)])
-    MRPMessage.objects.bulk_create([MRPMessage(run=run, material=by_number[m], text=text[:200])
-                                    for m, text in result.messages])
+    planned = {p.number: p for p in run.planned_orders.all()}
+    MRPMessage.objects.bulk_create([MRPMessage(run=run, material=by_number[m], text=text[:200],
+                                               planned_order=planned.get(result.message_orders.get(index)))
+                                    for index, (m, text) in enumerate(result.messages)])
     if count:
         logger.info("Superseded %d open planned order(s) of earlier MRP runs for plant %s", count, plant.code)
     return run
