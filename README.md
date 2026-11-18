@@ -274,7 +274,7 @@ late customer lines, overdue supplier deliveries
 
 | Area | What exists |
 |---|---|
-| KPIs | On time in full to customers and from suppliers (lines due in the last 90 days, completely delivered or received by their date), forecast accuracy (8c), inventory days (stock value against daily cost of sales), revenue at risk (8c). Each with its target (`CONTROL_TARGETS`), a status (good / warning / critical) and the basis it was counted from; "no data" rather than a guessed zero |
+| KPIs | On time in full to customers and from suppliers (lines due in the last 90 days, completely delivered or received by their requested or agreed date; customer lines without a requested date are counted apart, not judged), forecast accuracy (8c), inventory days (stock value against daily cost of sales), revenue at risk (8c). Each with its target (`CONTROL_TARGETS`), a status (good / warning / critical) and the basis it was counted from; "no data" rather than a guessed zero |
 | Ahead | Open order book in the next months, planned orders that should already have started, suppliers at high risk |
 | Problems inbox | Cells down or offline, MRP messages, HIGH and MEDIUM supply risks, overdue tickets, late customer order lines, overdue supplier deliveries; each with area, severity, document, owner role and a stable key; critical first, oldest first; filtered by the reader's role |
 | Command | `python manage.py control_tower --company 1000` ([ADR 0017](docs/decisions/0017-control-tower-kpis-and-problems-inbox.md)) |

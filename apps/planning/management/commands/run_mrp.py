@@ -8,7 +8,7 @@ from datetime import date
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from apps.common.logcontext import new_request_id, request_id
+from apps.common.logcontext import command_request_id
 from apps.finance.services import PostingError
 from apps.organization.models import Plant
 from apps.planning import mrp
@@ -22,8 +22,12 @@ class Command(BaseCommand):
         parser.add_argument("--date", help="Planning date, YYYY-MM-DD (default: today).")
         parser.add_argument("--horizon", type=int, default=6, help="Months to plan.")
 
-    def handle(self, *args, plant, date=None, horizon=6, **options):
-        request_id.set(f"cmd-{new_request_id()}")
+    def handle(self, *args, **options):
+        """Run the command under its own request ID, restored afterwards (no leak into what runs next)."""
+        with command_request_id():
+            return self._run(*args, **options)
+
+    def _run(self, *args, plant, date=None, horizon=6, **options):
         try:
             plant_obj = Plant.objects.select_related("company_code").get(code=plant)
         except Plant.DoesNotExist as exc:

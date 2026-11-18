@@ -5,6 +5,7 @@ Read-only; the same calculations as ``GET /api/control/kpis/`` and ``/api/contro
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from apps.common.logcontext import command_request_id
 from apps.control import services
 from apps.organization.models import CompanyCode
 
@@ -17,7 +18,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--company", required=True)
 
-    def handle(self, *args, company, **options):
+    def handle(self, *args, **options):
+        """Run the command under its own request ID, restored afterwards (no leak into what runs next)."""
+        with command_request_id():
+            return self._run(*args, **options)
+
+    def _run(self, *args, company, **options):
         company_code = CompanyCode.objects.select_related("currency").filter(code=company).first()
         if company_code is None:
             raise CommandError(f"Company code {company} does not exist.")

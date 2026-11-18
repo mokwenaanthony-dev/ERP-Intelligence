@@ -145,3 +145,27 @@ def test_the_command(tower):
     call_command("control_tower", "--company", "1000", stdout=out)
     text = out.getvalue()
     assert "On time in full, customers" in text and "Problems (" in text and "Cell PRESS3 is down" in text
+
+
+def test_lines_without_a_requested_date_are_not_judged_on_time(tower):
+    """An order with no promised date cannot be late: it is left out and the basis says so (v0.19.1)."""
+    widget = Material.objects.get(number="TG-1001")
+    undated = sales.create_sales_order(sales_organization=SalesOrganization.objects.get(code="1000"),
+                                       customer=tower.customer, order_date=date(2026, 10, 1),
+                                       items=[sales.OrderItemInput(material=widget, quantity=D("5"),
+                                                                   plant=Plant.objects.get(code="1000"))])
+    sales.confirm_order(undated)
+    sales.post_delivery(undated, delivery_date=date(2026, 10, 3),
+                        storage_location=StorageLocation.objects.get(plant__code="1000", code="0001"))
+    customers = kpi(services.kpis(tower.company, on=ON), "otif_customers")
+    assert customers["value"] == D("50.0")  # still the two dated lines: 1 of 2
+    assert customers["basis"].endswith("; 1 line(s) without a requested date not measured")
+
+
+def test_a_command_restores_the_request_id_afterwards(tower):
+    """A command logs under its own ID, then puts the previous one back, so it cannot leak (v0.19.1)."""
+    from apps.common.logcontext import request_id
+
+    assert request_id.get() == "-"
+    call_command("control_tower", "--company", "1000", stdout=StringIO())
+    assert request_id.get() == "-"
