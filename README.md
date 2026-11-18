@@ -35,7 +35,8 @@ steps, as its own system or (planned) as an intelligence layer beside the ERP it
 | No view of what is coming | Forecasts with ranges; MRP within 15 minutes of a change; revenue at risk per supplier |
 | Shop floor and finance out of step | Machine state and confirmations from the MES reach the books in seconds |
 | AI pilots nobody trusts | Recommendations decided and recorded by their owner; an assistant grounded in cited facts, off by default |
-| Rules known only to a few people | [269 business rules](docs/RULES.md) catalogued from the code, kept true by a test |
+| Suppliers and customers on the phone and in e-mail | A partner portal: suppliers confirm dates, announce deliveries and quote; customers see their order status; each sees only its own documents |
+| Rules known only to a few people | [292 business rules](docs/RULES.md) catalogued from the code, kept true by a test |
 
 **For** small and mid-sized manufacturers and distributors (South African VAT, payroll, B-BBEE and
 POPIA built in), ERP consultants and partners bringing AI to clients without a rip-and-replace, and
@@ -44,11 +45,11 @@ developers learning how enterprise systems and AI fit together. Interested in pa
 [decision records](docs/decisions/README.md) show what exists, what is still a gap, and where to join.
 
 **Built today:** Financials, stock, order-to-cash, procure-to-pay, HR with South African payroll,
-cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, a control tower with recommendations people decide, a grounded AI assistant, CRM and SRM; an analytics layer with
+cost and profit centres, production planning and orders, MRP, revenue-at-risk per supplier, a control tower with recommendations people decide, a grounded AI assistant, CRM and SRM, and a portal for suppliers and customers; an analytics layer with
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
-900+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** the digital supply-chain network and a side-by-side mode beside an existing ERP (Wave 10).
+950+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
+dependency auditing. **Next:** running beside an existing ERP (Wave 10b).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -100,7 +101,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 8c | Supply-chain risk and future state: revenue at risk per supplier (single sources, BOM where-used to open sales orders, grades, contracts) with recommendations; forecast accuracy against actual deliveries; MRP re-checked every 15 minutes | Done |
 | 9a | Control tower: the KPIs of the [vision](docs/VISION.md) (on time in full to customers and from suppliers, forecast accuracy, inventory days, revenue at risk) with targets, status and basis; the future state beside them; a problems inbox from every module, with owners, filtered by role | Done |
 | 9b | Recommendations with reasons and expected impact, accepted or rejected once by their owner (idempotent) with a track record; an AI assistant that explains from cited facts (KG-RAG), never executes and is off until an administrator switches it on; the [business-rules catalogue](docs/RULES.md) generated from the code | Done |
-| 10 | Digital supply-chain network: supplier portal and API, customer order status, a shared forecast, anonymised benchmarks; side-by-side mode (an adapter reading an existing ERP) | Next |
+| 10a | Partner network: a portal for suppliers (confirm order lines, send delivery notices, quote on invited RFQs, read the demand outlook when purchasing shares it) and customers (order status); every partner sees only its own documents, behind a role wall tested against every internal route; confirmed dates flow into MRP and the control tower | Done |
+| 10b | Side by side: an adapter reading master data and open documents from an existing ERP, so the intelligence layer runs beside it; anonymised benchmarks | Next |
 | 11 | PLM and digital twin; the demo company as a model-company template | Planned |
 
 ## What Wave 0 delivers
@@ -287,6 +289,24 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 10a delivers
+
+```
+supplier ─(portal)─> confirm line: qty + date ─> MRP plans the receipt on that date (next 15-min cycle)
+                                               └> control tower: "confirmed later than agreed" ─> purchasing
+         ─(portal)─> delivery notice ─> warehouse sees what is coming; overdue advice says "on its way"
+         ─(portal)─> quote on an invited RFQ (SRM rules)        <─ demand outlook, only if purchasing agreed
+customer ─(portal)─> own orders: delivered, invoiced, open, late
+```
+
+| Area | What exists |
+|---|---|
+| The wall | Two new roles, SUPPLIER and CUSTOMER, each linked to one business partner. The shared permission class refuses them everywhere inside, including the areas every signed-in user may read, and the project default is now "internal users only". A test walks **every** internal `/api/` route and checks a supplier and a customer are refused (GET and POST). Another partner's document answers 404, like one that does not exist |
+| Suppliers | `GET /api/portal/purchase-orders/` (released orders only), `POST .../<number>/confirm/` (quantity and date per line, kept as history, the same again changes nothing), `POST /api/portal/delivery-notices/` (idempotent per delivery note number; a different notice under the same number 409), `POST /api/portal/rfqs/<number>/quote/` (through the SRM rules, never seeing another quote), `GET /api/portal/outlook/` (ordered, planned and forecast per month for the materials it supplies, only while purchasing shares it) |
+| Customers | `GET /api/portal/sales-orders/`: lines, delivered, invoiced, open, deliveries, invoices, and whether a line is late against the requested date |
+| Inside the company | `GET/POST /api/portal/network/forecast-shares/` (purchasing agrees per supplier), `GET /api/portal/network/delivery-notices/` (for receiving); MRP plans receipts on confirmed dates; the control tower flags `confirmed-late` and words overdue advice from the confirmation or notice; on-time delivery still measured against the agreed date |
+| Commands | `create_partner_user --company 1000 --partner 1000002 --username ...` (no password on the command line: it says to run `changepassword`), `setup_demo_portal` (demo users `highveld` and `acme`, outlook shared with Highveld; part of `seed_data`) ([ADR 0019](docs/decisions/0019-a-partner-portal-in-the-monolith-behind-a-role-wall.md)) |
 
 ## What Wave 9b delivers
 

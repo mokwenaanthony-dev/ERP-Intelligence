@@ -32,4 +32,6 @@ urlpatterns = [
     path("api/srm/", include("apps.srm.urls")),
     path("api/planning/", include("apps.planning.urls")),
     path("api/control/", include("apps.control.urls")),
+    # Suppliers and customers (Wave 10a): their own documents only
+    path("api/portal/", include("apps.portal.urls")),
 ]

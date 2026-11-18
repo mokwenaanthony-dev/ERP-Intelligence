@@ -8,16 +8,18 @@ posted, and the API answers 400 with the message shown (placeholders in braces a
 These are the "learned rules" of the system, the part of an ERP that is worth more than its code
 (see `docs/VISION.md`).
 
-**269 rules** in 10 areas.
+**292 rules** in 12 areas.
 
 | Area | Rules |
 |---|---:|
 | control | 6 |
 | crm | 38 |
 | finance | 33 |
+| graph | 1 |
 | hr | 9 |
 | inventory | 21 |
 | planning | 12 |
+| portal | 22 |
 | production | 51 |
 | purchasing | 35 |
 | sales | 27 |
@@ -115,6 +117,12 @@ These are the "learned rules" of the system, the part of an ERP that is worth mo
 | Document {entry} has already been reversed. | `services.py` reverse_journal_entry | PostingError |
 | Document {entry} is itself a reversal and cannot be reversed. | `services.py` reverse_journal_entry | PostingError |
 
+## graph
+
+| Rule (message shown) | Where | Error |
+|---|---|---|
+| Material {material} is not in the graph. | `views.py` get | NotFound |
+
 ## hr
 
 | Rule (message shown) | Where | Error |
@@ -171,6 +179,33 @@ These are the "learned rules" of the system, the part of an ERP that is worth mo
 | The horizon must be 1 to {MAX_HORIZON} months. | `services.py` run_forecast | ForecastError |
 | Use {HISTORY_RANGE[0]} to {HISTORY_RANGE[1]} months of history. | `services.py` run_forecast | ForecastError |
 | {', '.join(services_)} are services: only stock materials are forecast. | `services.py` run_forecast | ForecastError |
+
+## portal
+
+| Rule (message shown) | Where | Error |
+|---|---|---|
+| Purchase order {number} was not found. | `services.py` _order | NotFound |
+| Request for quotation {rfq_number} was not found. | `services.py` _quote | NotFound |
+| Your login is not linked to a business partner; ask the company to link it. | `services.py` access_for | NotFound |
+| Confirm at least one line. | `services.py` confirm | PortalError |
+| Confirm each line once per request. | `services.py` confirm | PortalError |
+| Line {line.item_number}: confirm between 0 and the open {open_quantity}. | `services.py` confirm | PortalError |
+| Line {line.item_number}: the date cannot be before the order date {order.order_date}. | `services.py` confirm | PortalError |
+| Purchase order {number} has no line {line.item_number}. | `services.py` confirm | PortalError |
+| Purchase order {number} is {order.status.lower()}: it cannot be confirmed. | `services.py` confirm | PortalError |
+| The demand outlook is shared only by agreement with purchasing; it is not shared with you at the moment. | `services.py` outlook | NotShared |
+| Sales order {number} was not found. | `services.py` sales_order | NotFound |
+| Delivery note {reference} was already announced as {existing.notice_number} with other details; use a new reference for a different delivery. | `services.py` send_notice | PortalConflict |
+| Delivery note {reference} was already announced as {existing.notice_number}. | `services.py` send_notice | PortalConflict |
+| Give your delivery note number as the reference. | `services.py` send_notice | PortalError |
+| Line {number}: announce between 0 and the open {open_quantity}. | `services.py` send_notice | PortalError |
+| Purchase order {order_number} has no line {number}. | `services.py` send_notice | PortalError |
+| Purchase order {order_number} is {order.status.lower()}: nothing more can be delivered. | `services.py` send_notice | PortalError |
+| Say what is on its way: at least one line. | `services.py` send_notice | PortalError |
+| The arrival date cannot be before the ship date. | `services.py` send_notice | PortalError |
+| Nothing is shared with {supplier.number}. | `services.py` share | PortalError |
+| {supplier.number} is not a supplier in company code {company_code.code}. | `services.py` share | PortalError |
+| Request {rfq_number} does not ask for {', '.join(sorted(unknown))}. | `services.py` submit_quote | PortalError |
 
 ## production
 

@@ -1,7 +1,8 @@
 """Seed one user per role, then build the demo company (``setup_demo_company``), its production master
 data (``setup_demo_production``), a CRM pipeline (``setup_demo_crm``) and
-supplier relationships (``setup_demo_srm``) and
-MRP parameters with a customer order to plan (``setup_demo_mrp``).
+supplier relationships (``setup_demo_srm``),
+MRP parameters with a customer order to plan (``setup_demo_mrp``) and portal logins for a
+supplier and a customer (``setup_demo_portal``).
 
 Usage:
     python manage.py seed_data
@@ -58,6 +59,8 @@ class Command(BaseCommand):
         call_command("setup_demo_srm", stdout=self.stdout)
         self.stdout.write("Setting up demo MRP parameters...")
         call_command("setup_demo_mrp", stdout=self.stdout)
+        self.stdout.write("Setting up demo portal users (a supplier and a customer)...")
+        call_command("setup_demo_portal", stdout=self.stdout)
 
         self.stdout.write(self.style.SUCCESS(f"Done. Seed users all use the password: {DEFAULT_PASSWORD}"))
         self.stdout.write(self.style.WARNING("Change these passwords before using this anywhere but your own machine."))

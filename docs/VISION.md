@@ -88,16 +88,16 @@ On time in full (to customers, from suppliers) · forecast accuracy · inventory
 - **Idempotent everywhere:** repeating an operation gives the first result
   ([ADR 0010](decisions/0010-idempotency-of-every-state-changing-operation.md)).
 
-## Scorecard (after Wave 9b)
+## Scorecard (after Wave 10a)
 
 | Goal | Built | Next |
 |---|---|---|
-| Everything plugged in | ERP modules on one database; MES and Rust edge agents through the Unified Namespace (MQTT, ISA-95); `ml_service` | Suppliers and customers through a portal and API; an adapter to run beside an existing ERP (Wave 10) |
+| Everything plugged in | ERP modules on one database; MES and Rust edge agents through the Unified Namespace (MQTT, ISA-95); `ml_service`; suppliers and customers through a portal, each seeing only its own documents (10a) | An adapter to run beside an existing ERP (10b) |
 | Layers integrated in real time | Outbox → knowledge graph and UNS; live machine state; MRP within 15 minutes of a change | Alerts pushed to owners |
 | Current state | Live cell state, Customer 360, document flow, dashboards; the control tower: KPIs with targets, status and basis, and a problems inbox with owners (9a) | KPI history over time |
 | Future state | Demand forecasts with intervals; MRP projected stock; revenue at risk per supplier; order book and late planned orders beside the KPIs (9a) | — |
 | ML predicts | Demand forecasting by backtested method; forecast accuracy against actuals | Supplier delay, machine failure (later) |
 | AI recommends | Every problem with an action, a reason and its expected impact; an assistant that explains from cited facts (KG-RAG) and never executes, off by default (9b) | — |
 | Stakeholders decide | The owner accepts or rejects, once, with a reason; a track record per kind of recommendation: accepted, rejected, resolved (9b) | Tune the rules from the track record |
-| Learned rules as an asset | [269 business rules](RULES.md) catalogued from the code, kept true by a test (9b) | Country rules beyond South Africa in one clear layer |
-| Digital supply chain | SRM: onboarding, RFQs, contracts, scorecards | Supplier portal, shared forecast, anonymised benchmarks (Wave 10) |
+| Learned rules as an asset | [292 business rules](RULES.md) catalogued from the code, kept true by a test (9b) | Country rules beyond South Africa in one clear layer |
+| Digital supply chain | SRM: onboarding, RFQs, contracts, scorecards; suppliers confirm, announce and quote in person; their dates drive MRP and the control tower; the demand outlook shared by agreement (10a) | Anonymised benchmarks (10b); EDI for large suppliers |

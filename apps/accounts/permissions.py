@@ -27,10 +27,15 @@ Production Planner production master data,    cost estimates, all master data
 Viewer             -                           sales, inventory, purchasing,
                                                demand forecasts, control tower
 =================  ==========================  ===================================
+
+**People outside the company** (Wave 10a, ADR 0019): the SUPPLIER and CUSTOMER roles are refused
+by every class here, including the ones every signed-in user may read (master data, the graph),
+and by the project-wide default ``InternalUser``. They reach only ``/api/portal/``, whose views
+filter every query to the user's own business partner.
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-from .models import Role
+from .models import PARTNER_ROLES, Role
 
 
 class RolePermission(BasePermission):
@@ -48,6 +53,8 @@ class RolePermission(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+        if user.role in PARTNER_ROLES:
+            return False  # suppliers and customers never reach an internal endpoint (ADR 0019)
         if user.is_superuser or user.role == Role.ADMIN:
             return True
         if request.method in SAFE_METHODS:
@@ -59,6 +66,47 @@ class RolePermission(BasePermission):
         """Make a named permission class for one module, e.g. ``FinancePermission``."""
         attrs = {"read_roles": tuple(read), "write_roles": tuple(write), "read_all": read_all}
         return type(name, (cls,), attrs)
+
+
+class InternalUser(BasePermission):
+    """The project-wide default (``DEFAULT_PERMISSION_CLASSES``): signed in and not a partner role.
+
+    A view that names no permission class of its own gets this one, so forgetting one cannot open
+    an internal endpoint to a supplier or customer.
+    """
+
+    message = "This endpoint is for the company's own users."
+
+    def has_permission(self, request, view):
+        """Allow signed-in users whose role is not a supplier or customer role."""
+        user = request.user
+        return bool(user and user.is_authenticated and user.role not in PARTNER_ROLES)
+
+
+class PartnerUser(BasePermission):
+    """The portal (Wave 10a): signed in with a supplier or customer role (or an administrator testing it)."""
+
+    message = "The portal is for users of a supplier or a customer."
+    roles: frozenset = PARTNER_ROLES
+
+    def has_permission(self, request, view):
+        """Allow partner users with one of ``roles``; administrators are refused too (no partner to act for)."""
+        user = request.user
+        return bool(user and user.is_authenticated and user.role in self.roles)
+
+
+class SupplierUser(PartnerUser):
+    """Supplier side of the portal only."""
+
+    message = "This part of the portal is for suppliers."
+    roles = frozenset({Role.SUPPLIER})
+
+
+class CustomerUser(PartnerUser):
+    """Customer side of the portal only."""
+
+    message = "This part of the portal is for customers."
+    roles = frozenset({Role.CUSTOMER})
 
 
 FinancePermission = RolePermission.build(
@@ -285,4 +333,13 @@ AssistantAdminPermission = RolePermission.build(
     "AssistantAdminPermission",
     read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER, Role.INVENTORY_MANAGER,
           Role.PRODUCTION_PLANNER, Role.VIEWER),
+)
+
+
+# Wave 10a: which suppliers see the shared demand outlook is purchasing's agreement to make; the
+# warehouse reads delivery notices to plan receiving.
+PartnerNetworkPermission = RolePermission.build(
+    "PartnerNetworkPermission",
+    write=(Role.PURCHASING_OFFICER,),
+    read=(Role.INVENTORY_MANAGER, Role.FINANCE_MANAGER, Role.PRODUCTION_PLANNER, Role.VIEWER),
 )

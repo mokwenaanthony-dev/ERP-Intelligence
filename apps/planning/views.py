@@ -15,12 +15,11 @@ from django.utils import timezone
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
-from apps.accounts.permissions import PlanningPermission
+from apps.accounts.permissions import InternalUser, PlanningPermission
 from apps.masterdata.models import Material
 from apps.organization.models import CompanyCode, Plant
 
@@ -156,7 +155,7 @@ class PlannedOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
 
     def get_permissions(self):
         # Reading follows the planning roles; converting is checked per order below.
-        return [IsAuthenticated()] if self.action == "convert" else [PlanningPermission()]
+        return [InternalUser()] if self.action == "convert" else [PlanningPermission()]
 
     def get_queryset(self):
         orders = PlannedOrder.objects.select_related("run__plant", "material")

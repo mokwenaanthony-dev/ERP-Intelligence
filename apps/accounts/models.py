@@ -17,6 +17,14 @@ class Role(models.TextChoices):
     HR_ADMIN = "HR_ADMIN", "HR Admin"
     PRODUCTION_PLANNER = "PRODUCTION_PLANNER", "Production Planner"
     VIEWER = "VIEWER", "Viewer"
+    # Outside the company (Wave 10a): a person at a supplier or a customer, linked to that business
+    # partner. They use only /api/portal/ and see only their own documents (ADR 0019).
+    SUPPLIER = "SUPPLIER", "Supplier (portal)"
+    CUSTOMER = "CUSTOMER", "Customer (portal)"
+
+
+# Roles of people outside the company: refused by every internal permission (apps.accounts.permissions).
+PARTNER_ROLES = frozenset({Role.SUPPLIER, Role.CUSTOMER})
 
 
 class User(AbstractUser):
