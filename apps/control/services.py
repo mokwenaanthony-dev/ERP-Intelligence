@@ -288,6 +288,30 @@ def _mrp_advice(message) -> dict:
                    f"Supply of {what} in time for its demand")
 
 
+def _late_receipt_advice(line, open_quantity: Decimal, value: Decimal, confirmed, on: date) -> dict:
+    """Recommendation for an overdue purchase line, using what the supplier told us through the portal (10a).
+
+    A delivery notice on its way, a confirmed date still ahead, or neither: each needs a different
+    action from purchasing.
+    """
+    supplier, material = line.order.supplier.name, line.material.number
+    impact = f"R{value.quantize(CENT)} of purchases received"
+    coming = sorted((item.notice for item in line.notice_items.all() if item.notice.arrival_date >= on),
+                    key=lambda n: n.arrival_date)
+    if coming:
+        notice = coming[0]
+        return _advice(f"On its way: delivery notice {notice.notice_number} ({notice.reference}) arrives "
+                       f"{notice.arrival_date}. Plan receiving; chase only if it does not arrive.",
+                       f"{supplier} announced the shipment through the portal.", "otif_suppliers", value, impact)
+    if confirmed and confirmed.delivery_date >= on:
+        return _advice(f"{supplier} confirmed {confirmed.quantity} x {material} for {confirmed.delivery_date}; MRP "
+                       "plans with that date. If it is too late for the demand, buy the shortfall elsewhere.",
+                       "The agreed date has passed but the supplier gave a new one.", "otif_suppliers", value, impact)
+    return _advice(f"Ask {supplier} for a confirmed date for {open_quantity} x {material} (through the portal or by "
+                   "phone); if none within 2 working days, buy the shortfall elsewhere.",
+                   "The goods are overdue and what depends on them waits.", "otif_suppliers", value, impact)
+
+
 def _late_order_advice(line, open_quantity: Decimal) -> dict:
     """Recommendation for a late customer order line: deliver from stock if there is enough, else re-promise."""
     from apps.inventory.services import plant_stock
@@ -377,25 +401,39 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
                 line.order.order_number, Role.SALES_REP, due,
                 lambda ln=line, q=open_quantity: _late_order_advice(ln, q))
 
-    for line in (PurchaseOrderItem.objects.filter(order__company_code=company_code, order__delivery_date__lt=on,
+    # Purchase lines: overdue receipts, and suppliers who confirmed a date later than agreed (10a).
+    for line in (PurchaseOrderItem.objects.filter(order__company_code=company_code, order__delivery_date__isnull=False,
                                                   order__status__in=[PurchaseOrder.Status.OPEN,
                                                                      PurchaseOrder.Status.RELEASED])
-                 .select_related("order__supplier", "material")):
+                 .select_related("order__supplier", "material")
+                 .prefetch_related("confirmations", "notice_items__notice")):
         open_quantity = line.quantity - line.received_quantity
-        if open_quantity > 0:
-            late = (on - line.order.delivery_date).days
-            value = open_quantity * line.net_price
-            add("purchasing", CRITICAL if late > 7 else WARNING,
-                f"late-receipt:{line.order.order_number}/{line.item_number}",
-                f"Overdue delivery {line.order.order_number}/{line.item_number}",
-                f"{open_quantity} x {line.material.number} from {line.order.supplier.name}, due "
-                f"{line.order.delivery_date} ({late} day(s) late)",
-                line.order.order_number, Role.PURCHASING_OFFICER, line.order.delivery_date,
-                lambda ln=line, q=open_quantity, v=value: _advice(
-                    f"Ask {ln.order.supplier.name} for a confirmed date for {q} x {ln.material.number}; "
-                    "if none within 2 working days, buy the shortfall elsewhere.",
-                    "The goods are overdue and what depends on them waits.", "otif_suppliers", v,
-                    f"R{v.quantize(CENT)} of purchases received"))
+        if open_quantity <= 0:
+            continue
+        agreed, supplier = line.order.delivery_date, line.order.supplier.name
+        confirmed = next(iter(line.confirmations.all()), None)  # the latest confirmation (portal)
+        value = open_quantity * line.net_price
+        document = f"{line.order.order_number}/{line.item_number}"
+        if agreed < on:
+            late = (on - agreed).days
+            add("purchasing", CRITICAL if late > 7 else WARNING, f"late-receipt:{document}",
+                f"Overdue delivery {document}",
+                f"{open_quantity} x {line.material.number} from {supplier}, due {agreed} ({late} day(s) late)"
+                + (f"; confirmed for {confirmed.delivery_date}" if confirmed else ""),
+                line.order.order_number, Role.PURCHASING_OFFICER, agreed,
+                lambda ln=line, q=open_quantity, v=value, c=confirmed: _late_receipt_advice(ln, q, v, c, on))
+        elif confirmed and confirmed.delivery_date > agreed:
+            days = (confirmed.delivery_date - agreed).days
+            add("purchasing", WARNING, f"confirmed-late:{document}:{confirmed.delivery_date:%Y%m%d}",
+                f"Confirmed later than agreed {document}",
+                f"{supplier} confirmed {confirmed.quantity} x {line.material.number} for {confirmed.delivery_date}, "
+                f"{days} day(s) after the agreed {agreed}",
+                line.order.order_number, Role.PURCHASING_OFFICER, confirmed.confirmed_at.date(),
+                lambda ln=line, v=value, c=confirmed, d=days: _advice(
+                    f"Accept the new date (MRP already plans with it) or ask {ln.order.supplier.name} to keep "
+                    f"{ln.order.delivery_date}; if neither works for the demand, buy the shortfall elsewhere.",
+                    f"The supplier confirmed {d} day(s) late through the portal; on-time delivery is measured "
+                    "against the agreed date.", "otif_suppliers", v, f"R{v.quantize(CENT)} of purchases on time"))
 
     found.sort(key=lambda p: (p["severity"] != CRITICAL, p["since"], p["key"]))
     logger.info("Problems inbox for %s on %s: %d problem(s), %d critical", company_code.code, on, len(found),

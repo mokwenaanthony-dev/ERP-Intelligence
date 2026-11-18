@@ -157,12 +157,16 @@ def snapshot(plant, planning_date: date, horizon: int) -> dict:
         uncovered = forecast - ordered.get(material.number, {}).get(period.period, ZERO)
         add(material, "independent", period.period, uncovered)
 
-    # Scheduled receipts: open purchase order items (ordered - received) on their delivery date.
+    # Scheduled receipts: open purchase order items (ordered - received) on their delivery date, or on
+    # the date the supplier confirmed through the portal (Wave 10a): the latest confirmation counts,
+    # so a supplier's new date reaches the plan within one MRP cycle (the fingerprint changes).
     po_items = (PurchaseOrderItem.objects.filter(plant=plant, order__status__in=[PurchaseOrder.Status.OPEN,
                                                                                  PurchaseOrder.Status.RELEASED])
-                .select_related("order", "material"))
+                .select_related("order", "material").prefetch_related("confirmations"))
     for item in po_items:
-        add(item.material, "receipts", item.order.delivery_date or item.order.order_date,
+        confirmed = next(iter(item.confirmations.all()), None)  # newest first (portal.OrderConfirmation)
+        add(item.material, "receipts",
+            confirmed.delivery_date if confirmed else (item.order.delivery_date or item.order.order_date),
             item.quantity - item.received_quantity)
     # ... and open production orders (ordered - received) on their finish date; their components not
     # yet issued are dependent demand on the start date.

@@ -29,3 +29,4 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0016](0016-supply-risk-and-forecast-accuracy-in-the-service-layer.md) | Revenue at risk and forecast accuracy are computed in the service layer; MRP re-checked every 15 minutes | Accepted | 8c |
 | [0017](0017-control-tower-kpis-and-problems-inbox.md) | The control tower calculates KPIs and gathers problems on request, from the modules that already know them | Accepted | 9a |
 | [0018](0018-recommendations-decided-by-owners-and-a-grounded-ai-assistant.md) | Owners decide recommendations once; the AI assistant explains from cited facts and never executes | Accepted | 9b |
+| [0019](0019-a-partner-portal-in-the-monolith-behind-a-role-wall.md) | A partner portal in the monolith, behind a role wall; partners inform, the company decides | Accepted | 10a |

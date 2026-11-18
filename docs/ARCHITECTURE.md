@@ -252,7 +252,8 @@ Design rules:
 | 8c ✅ | Supply-chain risk and future state: revenue at risk per supplier with recommendations, forecast accuracy against actuals, MRP every 15 minutes | Needs SRM grades, forecasts and MRP |
 | 9a ✅ | Control tower: north-star KPIs with targets, status and basis; the future state; a problems inbox from every module with owners, filtered by role | One view of the state of the business |
 | 9b ✅ | Recommendations with reasons and expected impact; owners' decisions recorded once (idempotent) with a track record; a grounded AI assistant (KG-RAG, cited facts, off by default, never executes); the [business-rules catalogue](RULES.md) | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
-| 10 🔜 | Digital supply-chain network: supplier portal and API, customer order status, shared forecast, anonymised benchmarks; side-by-side mode (an adapter reading an existing ERP) | Everyone plugged in, without a rip-and-replace |
+| 10a ✅ | Partner network: portal for suppliers (confirmations, delivery notices, quotes, a demand outlook shared by agreement) and customers (order status), behind a role wall tested against every internal route; confirmed dates drive MRP and the control tower ([ADR 0019](decisions/0019-a-partner-portal-in-the-monolith-behind-a-role-wall.md)) | Everyone plugged in |
+| 10b 🔜 | Side by side: an adapter reading master data and open documents from an existing ERP; anonymised benchmarks | No rip-and-replace |
 | 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management; the demo company packaged as a model-company template | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

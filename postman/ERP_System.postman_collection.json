@@ -3168,6 +3168,363 @@
       ]
     },
     {
+      "name": "Partner portal (suppliers: highveld, customers: acme; Wave 10a)",
+      "item": [
+        {
+          "name": "1. Who am I (portal)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "me",
+                ""
+              ]
+            },
+            "description": "Sign in first as highveld (supplier) or acme (customer), password ChangeMe123! (demo only), with the Auth request."
+          }
+        },
+        {
+          "name": "2. Supplier: my purchase orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/purchase-orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "purchase-orders",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Supplier: confirm lines (copy an order number from 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/purchase-orders/PO00000001/confirm/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "purchase-orders",
+                "PO00000001",
+                "confirm",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lines\": [\n    {\n      \"item_number\": 10,\n      \"quantity\": \"100\",\n      \"delivery_date\": \"2026-12-05\"\n    }\n  ],\n  \"note\": \"One truck\"\n}"
+            },
+            "description": "Kept as history; the latest counts. The same confirmation again changes nothing (lines_changed 0). MRP plans the receipt on this date."
+          }
+        },
+        {
+          "name": "4. Supplier: send a delivery notice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/delivery-notices/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "delivery-notices",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"DN-1001\",\n  \"order_number\": \"PO00000001\",\n  \"ship_date\": \"2026-12-03\",\n  \"arrival_date\": \"2026-12-05\",\n  \"items\": [\n    {\n      \"item_number\": 10,\n      \"quantity\": \"100\"\n    }\n  ]\n}"
+            },
+            "description": "201 new; 200 the same notice again; 409 a different notice under the same reference."
+          }
+        },
+        {
+          "name": "5. Supplier: invited RFQs and my quotes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/rfqs/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "rfqs",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. Supplier: quote on an RFQ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/rfqs/RQ00000001/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "rfqs",
+                "RQ00000001",
+                "quote",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prices\": {\n    \"RM-2001\": \"85.00\"\n  },\n  \"delivery_days\": 10,\n  \"reference\": \"Q-2027-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Supplier: demand outlook (if shared)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/outlook/?months=6",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "outlook",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "months",
+                  "value": "6"
+                }
+              ]
+            },
+            "description": "403 unless purchasing shares the outlook with this supplier."
+          }
+        },
+        {
+          "name": "8. Customer: my orders and their status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/sales-orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "sales-orders",
+                ""
+              ]
+            },
+            "description": "Sign in as acme. Lines, delivered, invoiced, open, late, deliveries and invoices."
+          }
+        },
+        {
+          "name": "9. Inside: who sees the outlook (purchasing)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/network/forecast-shares/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "network",
+                "forecast-shares",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            },
+            "description": "Sign in as purchasing_officer."
+          }
+        },
+        {
+          "name": "10. Inside: share the outlook with a supplier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/network/forecast-shares/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "network",
+                "forecast-shares",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_code\": \"1000\",\n  \"supplier\": \"1000002\",\n  \"active\": true\n}"
+            },
+            "description": "Purchasing only. The same state again changes nothing; active false ends the sharing and keeps the record."
+          }
+        },
+        {
+          "name": "11. Inside: delivery notices for receiving",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/portal/network/delivery-notices/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "portal",
+                "network",
+                "delivery-notices",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "HR and payroll (login as hr_admin), controlling reports (login as accountant)",
       "item": [
         {
