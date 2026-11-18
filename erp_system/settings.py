@@ -215,6 +215,15 @@ ML_SERVICE_RETRIES = config("ML_SERVICE_RETRIES", default=3, cast=int)  # attemp
 # Percentages for on time in full and forecast accuracy (higher is better); days of stock (lower is better).
 CONTROL_TARGETS = {"otif_customers": 95, "otif_suppliers": 95, "forecast_accuracy": 80, "inventory_days": 45}
 
+# --- AI assistant (Wave 9b, ADR 0018): explains problems from grounded facts; never executes -----------------
+# Off unless BOTH an administrator switches it on (POST /api/control/assistant/) AND a provider key is
+# set here, because turning it on sends business facts outside the company. The key is read from .env
+# only and is never stored in the database or logged. The default provider is the Anthropic Messages API.
+AI_ASSISTANT_API_KEY = config("AI_ASSISTANT_API_KEY", default="")
+AI_ASSISTANT_MODEL = config("AI_ASSISTANT_MODEL", default="claude-sonnet-5-5")
+AI_ASSISTANT_URL = config("AI_ASSISTANT_URL", default="https://api.anthropic.com/v1/messages")
+AI_ASSISTANT_TIMEOUT = config("AI_ASSISTANT_TIMEOUT", default=30, cast=float)  # seconds
+
 # --- Logging (design document, section 4) -----------------------------------------
 # Three destinations, all with the same detailed format:
 #   console          what `docker compose logs` and the terminal show

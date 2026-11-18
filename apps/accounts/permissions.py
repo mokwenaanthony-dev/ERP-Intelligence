@@ -266,3 +266,23 @@ ControlPermission = RolePermission.build(
     read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER, Role.INVENTORY_MANAGER,
           Role.PRODUCTION_PLANNER, Role.VIEWER),
 )
+
+# Control tower decisions and the AI assistant (Wave 9b). Owners decide: who owns each problem is
+# checked per problem in apps.control.decisions; these roles may send decisions at all. Asking the
+# assistant to explain is reading, so every control-tower reader may do it. Switching the assistant
+# on or off is for administrators only (they always pass; nobody else is listed).
+DecisionPermission = RolePermission.build(
+    "DecisionPermission",
+    write=(Role.SALES_REP, Role.PURCHASING_OFFICER, Role.PRODUCTION_PLANNER),
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.INVENTORY_MANAGER, Role.VIEWER),
+)
+ExplainPermission = RolePermission.build(
+    "ExplainPermission",
+    write=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER, Role.INVENTORY_MANAGER,
+           Role.PRODUCTION_PLANNER, Role.VIEWER),
+)
+AssistantAdminPermission = RolePermission.build(
+    "AssistantAdminPermission",
+    read=(Role.FINANCE_MANAGER, Role.ACCOUNTANT, Role.SALES_REP, Role.PURCHASING_OFFICER, Role.INVENTORY_MANAGER,
+          Role.PRODUCTION_PLANNER, Role.VIEWER),
+)

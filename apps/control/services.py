@@ -29,7 +29,8 @@ no status.
 what it is, the document it concerns and the role that owns it: cells down or offline (production),
 MRP messages of the latest runs (planning), HIGH and MEDIUM supplier risks (purchasing), overdue
 service tickets (service), late customer order lines and overdue supplier deliveries. Each problem
-has a stable ``key`` so a decision about it can be recorded later (Wave 9b). Nothing is stored here.
+has a stable ``key`` and a recommendation (action, reason, expected impact); the owner's decision
+about it is recorded by ``decisions`` (Wave 9b, ADR 0018). Nothing is stored here.
 """
 from __future__ import annotations
 
@@ -218,33 +219,94 @@ def _latest_runs(company_code) -> list[int]:
     return list(latest.values())
 
 
-# --- problems inbox --------------------------------------------------------------------------------------
+# --- problems inbox, each with a recommendation (9a, 9b) --------------------------------------------------
+
+def _advice(action: str, reason: str, kpi: str | None = None, value: Decimal | None = None,
+            impact: str = "") -> dict:
+    """A recommendation: what to do, why, and what it should move (Wave 9b).
+
+    ``kpi`` is the control-tower KPI the action improves (or None), ``value`` the money involved where
+    there is one (open sales or purchase value, revenue at risk), ``impact`` the same in words. The
+    recommendation is a proposal; the owner decides (``decisions.decide``).
+    """
+    return {"action": action, "reason": reason,
+            "impact": {"kpi": kpi, "value": None if value is None else Decimal(value).quantize(CENT), "text": impact}}
+
+
+def _cell_advice(work_center, state: str) -> dict:
+    """Recommendation for a cell that is down or offline: what waits on it, and where else it can run."""
+    from apps.production.models import OrderOperation, ProductionOrder, WorkCenter
+
+    waiting = sorted(set(OrderOperation.objects.filter(
+        work_center=work_center, order__status__in=[ProductionOrder.Status.CREATED, ProductionOrder.Status.RELEASED])
+        .values_list("order__order_number", flat=True)))
+    alternatives = list(WorkCenter.objects.filter(line=work_center.line).exclude(pk=work_center.pk)
+                        .exclude(live_state__state__in=[CellState.State.DOWN, CellState.State.OFFLINE])
+                        .order_by("code").values_list("code", flat=True))
+    action = ("Send maintenance to " + work_center.code + "." if state == CellState.State.DOWN
+              else "Check the edge agent and network of " + work_center.code + ".")
+    if waiting and alternatives:
+        action += f" Move the waiting operations to {', '.join(alternatives)}."
+    reason = (f"{len(waiting)} open production order(s) need {work_center.code}"
+              + (f": {', '.join(waiting[:5])}" + (" ..." if len(waiting) > 5 else "") if waiting else "")
+              + "." + ("" if alternatives else " No other cell on its line is available."))
+    return _advice(action, reason, "otif_customers", None,
+                   f"Protects delivery dates of {len(waiting)} production order(s)" if waiting
+                   else "No production order waits on it yet")
+
+
+def _late_order_advice(line, open_quantity: Decimal) -> dict:
+    """Recommendation for a late customer order line: deliver from stock if there is enough, else re-promise."""
+    from apps.inventory.services import plant_stock
+
+    in_stock, _value = plant_stock(line.material, line.plant)
+    value = open_quantity * line.net_price
+    if in_stock >= open_quantity:
+        action = f"Deliver now: {in_stock} {line.material.number} in stock at plant {line.plant.code}."
+        reason = "The stock to complete the line is already there."
+    else:
+        action = (f"Agree a new date with {line.order.customer.name} and expedite supply "
+                  f"({in_stock} of {open_quantity} in stock).")
+        reason = "There is not enough stock to complete the line today."
+    return _advice(action, reason, "otif_customers", value, f"R{value.quantize(CENT)} of open sales delivered")
+
 
 def problems(company_code, *, on: date, now=None, areas: set[str] | None = None) -> list[dict]:
-    """Everything that needs a person's attention, critical first, then the oldest first."""
+    """Everything that needs a person's attention, critical first, then the oldest first.
+
+    Each problem carries a ``recommendation`` (action, reason, expected impact, Wave 9b) and the role
+    that owns it (``owner``, label; ``owner_role``, code), who may accept or reject it.
+    """
     now = now or timezone.now()
     areas = set(AREA_ROLES) if areas is None else areas
     found: list[dict] = []
 
-    def add(area, severity, key, title, detail, document, owner, since):
-        """Record one problem, if its area is one the caller may see."""
+    def add(area, severity, key, title, detail, document, owner, since, advice):
+        """Record one problem, if its area is one the caller may see. ``advice`` is called only then."""
         if area in areas:
             found.append({"key": key, "area": area, "severity": severity, "title": title, "detail": detail,
-                          "document": document, "owner": owner.label, "since": since})
+                          "document": document, "owner": owner.label, "owner_role": owner.value, "since": since,
+                          "recommendation": advice()})
 
     for cell in (CellState.objects.filter(work_center__plant__company_code=company_code,
                                           state__in=[CellState.State.DOWN, CellState.State.OFFLINE])
-                 .select_related("work_center__plant")):
+                 .select_related("work_center__plant", "work_center__line")):
         wc = cell.work_center
-        add("production", CRITICAL, f"cell:{wc.plant.code}/{wc.code}:{cell.state}",
-            f"Cell {wc.code} is {cell.state.lower()}", f"Plant {wc.plant.code}, since {cell.since or cell.reported_at}",
-            wc.code, Role.PRODUCTION_PLANNER, (cell.since or cell.reported_at).date())
+        started = cell.since or cell.reported_at
+        # The start time is part of the key: the same cell failing again later is a new problem (9b).
+        add("production", CRITICAL, f"cell:{wc.plant.code}/{wc.code}:{cell.state}:{started:%Y%m%dT%H%M}",
+            f"Cell {wc.code} is {cell.state.lower()}", f"Plant {wc.plant.code}, since {started}",
+            wc.code, Role.PRODUCTION_PLANNER, started.date(), lambda wc=wc, state=cell.state: _cell_advice(wc, state))
 
     for message in (MRPMessage.objects.filter(run__in=_latest_runs(company_code))
                     .select_related("run__plant", "material")):
         add("planning", WARNING, f"mrp:{message.run.run_number}:{message.pk}",
             f"MRP: {message.material.number}", message.text, message.run.run_number, Role.PRODUCTION_PLANNER,
-            message.run.planning_date)
+            message.run.planning_date,
+            lambda m=message: _advice(f"Act on the MRP message for {m.material.number}: {m.text}",
+                                      "MRP found it when netting demand against supply; left alone, demand "
+                                      "is covered late or not at all.", "otif_customers", None,
+                                      "Supply in time for the demand it covers"))
 
     for row in risk.supplier_risk(company_code, on=on):
         if row["risk"] in ("HIGH", "MEDIUM"):
@@ -252,17 +314,26 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
                 f"supplier-risk:{row['supplier']}:{row['risk']}",
                 f"{row['risk'].title()} supply risk: {row['name']}",
                 f"R{row['revenue_at_risk']} of open orders at risk. {row['recommendation']}",
-                row["supplier"], Role.PURCHASING_OFFICER, on)
+                row["supplier"], Role.PURCHASING_OFFICER, on,
+                lambda r=row: _advice(r["recommendation"],
+                                      f"Only {r['name']} supplies "
+                                      f"{', '.join(m['material'] for m in r['materials'] if m['single_source'])}; "
+                                      f"orders {', '.join(r['orders_at_risk'][:5]) or '-'} depend on it.",
+                                      "revenue_at_risk", r["revenue_at_risk"],
+                                      f"R{r['revenue_at_risk']} of open sales no longer depends on one supplier"))
 
     for ticket in crm.overdue_tickets(company_code, now):
         add("service", CRITICAL if ticket.priority in ("URGENT", "HIGH") else WARNING,
             f"ticket:{ticket.ticket_number}", f"Overdue ticket {ticket.ticket_number} ({ticket.priority.lower()})",
             f"{ticket.subject} - {ticket.customer.name}, due {timezone.localtime(ticket.due_at):%Y-%m-%d %H:%M}",
-            ticket.ticket_number, Role.SALES_REP, timezone.localtime(ticket.due_at).date())
+            ticket.ticket_number, Role.SALES_REP, timezone.localtime(ticket.due_at).date(),
+            lambda t=ticket: _advice(f"Call {t.customer.name} today and give the ticket an owner.",
+                                     f"The {t.priority.lower()} ticket is past its response time.", None, None,
+                                     "Customer kept informed; service level restored"))
 
     for line in (SalesOrderItem.objects.filter(order__company_code=company_code,
                                                order__status__in=[SalesOrder.Status.OPEN, SalesOrder.Status.CONFIRMED])
-                 .select_related("order__customer", "material")):
+                 .select_related("order__customer", "material", "plant")):
         due = line.order.requested_delivery_date or line.order.order_date
         open_quantity = line.open_quantity
         if due < on and open_quantity > 0:
@@ -271,7 +342,8 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
                 f"Late delivery {line.order.order_number}/{line.item_number}",
                 f"{open_quantity} x {line.material.number} for {line.order.customer.name}, due {due} "
                 f"({late} day(s) late)",
-                line.order.order_number, Role.SALES_REP, due)
+                line.order.order_number, Role.SALES_REP, due,
+                lambda ln=line, q=open_quantity: _late_order_advice(ln, q))
 
     for line in (PurchaseOrderItem.objects.filter(order__company_code=company_code, order__delivery_date__lt=on,
                                                   order__status__in=[PurchaseOrder.Status.OPEN,
@@ -280,12 +352,18 @@ def problems(company_code, *, on: date, now=None, areas: set[str] | None = None)
         open_quantity = line.quantity - line.received_quantity
         if open_quantity > 0:
             late = (on - line.order.delivery_date).days
+            value = open_quantity * line.net_price
             add("purchasing", CRITICAL if late > 7 else WARNING,
                 f"late-receipt:{line.order.order_number}/{line.item_number}",
                 f"Overdue delivery {line.order.order_number}/{line.item_number}",
                 f"{open_quantity} x {line.material.number} from {line.order.supplier.name}, due "
                 f"{line.order.delivery_date} ({late} day(s) late)",
-                line.order.order_number, Role.PURCHASING_OFFICER, line.order.delivery_date)
+                line.order.order_number, Role.PURCHASING_OFFICER, line.order.delivery_date,
+                lambda ln=line, q=open_quantity, v=value: _advice(
+                    f"Ask {ln.order.supplier.name} for a confirmed date for {q} x {ln.material.number}; "
+                    "if none within 2 working days, buy the shortfall elsewhere.",
+                    "The goods are overdue and what depends on them waits.", "otif_suppliers", v,
+                    f"R{v.quantize(CENT)} of purchases received"))
 
     found.sort(key=lambda p: (p["severity"] != CRITICAL, p["since"], p["key"]))
     logger.info("Problems inbox for %s on %s: %d problem(s), %d critical", company_code.code, on, len(found),

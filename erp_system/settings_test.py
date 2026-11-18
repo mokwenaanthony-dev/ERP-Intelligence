@@ -23,3 +23,6 @@ MIDDLEWARE = [m for m in MIDDLEWARE if not m.startswith("whitenoise.")]  # noqa:
 # Forecasting is off in tests unless a test turns it on (with a fake service, see tests/test_planning.py).
 ML_SERVICE_URL = ""
 ML_SERVICE_TOKEN = "test-token-at-least-16"
+
+# The AI assistant never calls out from tests: tests replace the provider call with a fake.
+AI_ASSISTANT_API_KEY = ""
