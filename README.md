@@ -26,7 +26,7 @@ how an ERP becomes intelligent in the era of AI agents, the direction the large 
 at a scale you can read and run: connected data, predictions with a track record, recommendations
 with reasons and expected impact that **their owner accepts or rejects on the record**, and an AI
 assistant that **cites its facts and never acts**. A small or mid-sized company can adopt it in
-steps, as its own system or (planned) as an intelligence layer beside the ERP it already runs.
+steps, as its own system or as an intelligence layer [beside the ERP it already runs](docs/IMPORT_FORMAT.md).
 
 | Problem | What the system does |
 |---|---|
@@ -36,7 +36,8 @@ steps, as its own system or (planned) as an intelligence layer beside the ERP it
 | Shop floor and finance out of step | Machine state and confirmations from the MES reach the books in seconds |
 | AI pilots nobody trusts | Recommendations decided and recorded by their owner; an assistant grounded in cited facts, off by default |
 | Suppliers and customers on the phone and in e-mail | A partner portal: suppliers confirm dates, announce deliveries and quote; customers see their order status; each sees only its own documents |
-| Rules known only to a few people | [292 business rules](docs/RULES.md) catalogued from the code, kept true by a test |
+| "We can't replace our ERP" | Side by side: load master data and open documents from the ERP you have (CSV exports), through the same rules, as often as you like; your ERP stays the system of record |
+| Rules known only to a few people | [318 business rules](docs/RULES.md) catalogued from the code, kept true by a test |
 
 **For** small and mid-sized manufacturers and distributors (South African VAT, payroll, B-BBEE and
 POPIA built in), ERP consultants and partners bringing AI to clients without a rip-and-replace, and
@@ -51,7 +52,7 @@ cost and profit centres, production planning and orders, MRP, revenue-at-risk pe
 financial statements and margin analysis; a Neo4j knowledge graph fed by a transactional outbox; a
 Unified Namespace bridge to the MES; and demand forecasting in a separate FastAPI `ml_service`.
 950+ tests, 95% coverage, every operation idempotent, CI with linting, security scanning and
-dependency auditing. **Next:** running beside an existing ERP (Wave 10b).
+dependency auditing. **Next:** a Sage X3 mapping tested on real SEED exports, and anonymised benchmarks (Wave 10c).
 Read the [architecture and vision](docs/ARCHITECTURE.md) for the full design, and the
 [architecture decision records](docs/decisions/README.md) for why each major choice was made.
 
@@ -104,7 +105,8 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 9a | Control tower: the KPIs of the [vision](docs/VISION.md) (on time in full to customers and from suppliers, forecast accuracy, inventory days, revenue at risk) with targets, status and basis; the future state beside them; a problems inbox from every module, with owners, filtered by role | Done |
 | 9b | Recommendations with reasons and expected impact, accepted or rejected once by their owner (idempotent) with a track record; an AI assistant that explains from cited facts (KG-RAG), never executes and is off until an administrator switches it on; the [business-rules catalogue](docs/RULES.md) generated from the code | Done |
 | 10a | Partner network: a portal for suppliers (confirm order lines, send delivery notices, quote on invited RFQs, read the demand outlook when purchasing shares it) and customers (order status); every partner sees only its own documents, behind a role wall tested against every internal route; confirmed dates flow into MRP and the control tower | Done |
-| 10b | Side by side: an adapter reading master data and open documents from an existing ERP, so the intelligence layer runs beside it; anonymised benchmarks | Next |
+| 10b | Side by side: partners, materials, stock and open orders loaded from an existing ERP's CSV exports through the same business rules, idempotent per file and per row, rejected rows with their reason; a mapping layer per source ERP; the demand outlook shares planned buys only with the preferred or only supplier | Done |
+| 10c | A Sage X3 mapping built on real SEED exports; anonymised benchmarks | Next |
 | 11 | PLM and digital twin; the demo company as a model-company template | Planned |
 
 ## What Wave 0 delivers
@@ -291,6 +293,23 @@ POST /api/hr/payroll-runs/      {"company_code": "1000", "year": 2026, "month": 
 Result for the three demo employees: run `PR00000001`, journal entry `PY00000001` on 31 May 2026.
 Gross R135,500.00, PAYE R31,757.50, UIF R531.36 + R531.36, SDL R1,355.00, net pay R103,211.14,
 costs on cost centres 1000 (R86,027.12), 2000 (R32,497.12) and 3000 (R18,862.12).
+
+## What Wave 10b delivers
+
+```
+your ERP (Sage X3, SAP, ...) --CSV export--> mapping (columns, codes, dates) --> the same services as the API
+   partners -> materials -> stock (a snapshot: only the difference is posted) -> open purchase and sales orders
+        each row: created / updated / unchanged / rejected with the rule's own message
+   then: MRP, the control tower and the portal work on your ERP's data; your ERP stays the system of record
+```
+
+| Area | What exists |
+|---|---|
+| Loading | `POST /api/connect/imports/` or `manage.py import_data --company 1000 --object partners --file ...`: partners (with customer and supplier roles), materials (and plant view), stock on hand, open purchase orders (released) and open sales orders, through the modules' own services, so every business rule applies. Format and samples: [docs/IMPORT_FORMAT.md](docs/IMPORT_FORMAT.md), [docs/import-samples/](docs/import-samples/) |
+| Idempotent | The same file again returns the first load. Every row is matched by the source's own key: unchanged stays unchanged, a changed partner or material is updated, an order is never created twice (a changed order is refused, saying so). A partner with a known VAT number, or a known material number, is linked rather than duplicated. Stock is a snapshot: only the difference is posted (561, 701 or 702, with its journal entry), and the books still reconcile |
+| Row by row | Each row (each order) is its own transaction: a broken rule rejects that row with the rule's message (for example "Partner 'S-0202' is not a customer in 1000") and the rest loads; every batch keeps the result of every row |
+| Mappings | A mapping per source ERP names its column headings, code translations (units, sites, roles), dates and decimal style; `generic` is the documented layout; a Sage X3 mapping follows once it can be tested on real SEED exports |
+| Fair competition | The partner portal's demand outlook shows planned buys and the forecast only where the supplier is the preferred or only source; elsewhere only what is ordered from it ([ADR 0020](docs/decisions/0020-side-by-side-imports-through-the-same-rules.md)) |
 
 ## What Wave 10a delivers
 

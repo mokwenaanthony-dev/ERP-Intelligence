@@ -3525,6 +3525,371 @@
       ]
     },
     {
+      "name": "Side by side: load your ERP's exports (finance_manager; Wave 10b)",
+      "item": [
+        {
+          "name": "1. Sources and the columns of each object",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/sources/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "sources",
+                ""
+              ]
+            },
+            "description": "Sign in as finance_manager to import; other business roles may read."
+          }
+        },
+        {
+          "name": "2. Load partners",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "company_code",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "source",
+                  "value": "generic",
+                  "type": "text"
+                },
+                {
+                  "key": "object",
+                  "value": "partners",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/import-samples/partners.csv"
+                }
+              ]
+            },
+            "description": "201 a new load; 200 the same file again (nothing loaded twice); 400 a file that cannot be read. Choose the file in Postman if the path is not found."
+          }
+        },
+        {
+          "name": "3. Load materials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "company_code",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "source",
+                  "value": "generic",
+                  "type": "text"
+                },
+                {
+                  "key": "object",
+                  "value": "materials",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/import-samples/materials.csv"
+                }
+              ]
+            },
+            "description": "201 a new load; 200 the same file again (nothing loaded twice); 400 a file that cannot be read. Choose the file in Postman if the path is not found."
+          }
+        },
+        {
+          "name": "4. Load stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "company_code",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "source",
+                  "value": "generic",
+                  "type": "text"
+                },
+                {
+                  "key": "object",
+                  "value": "stock",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/import-samples/stock.csv"
+                }
+              ]
+            },
+            "description": "201 a new load; 200 the same file again (nothing loaded twice); 400 a file that cannot be read. Choose the file in Postman if the path is not found."
+          }
+        },
+        {
+          "name": "5. Load purchase_orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "company_code",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "source",
+                  "value": "generic",
+                  "type": "text"
+                },
+                {
+                  "key": "object",
+                  "value": "purchase_orders",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/import-samples/purchase_orders.csv"
+                }
+              ]
+            },
+            "description": "201 a new load; 200 the same file again (nothing loaded twice); 400 a file that cannot be read. Choose the file in Postman if the path is not found."
+          }
+        },
+        {
+          "name": "6. Load sales_orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text",
+                "description": "ADR 0010: a new key per operation; resend the same key to retry safely."
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "company_code",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "source",
+                  "value": "generic",
+                  "type": "text"
+                },
+                {
+                  "key": "object",
+                  "value": "sales_orders",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/import-samples/sales_orders.csv"
+                }
+              ]
+            },
+            "description": "201 a new load; 200 the same file again (nothing loaded twice); 400 a file that cannot be read. Choose the file in Postman if the path is not found."
+          }
+        },
+        {
+          "name": "7. Loads so far",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/?company_code=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "company_code",
+                  "value": "1000"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. One load, with every row's result and reason",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/connect/imports/1/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "connect",
+                "imports",
+                "1",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "HR and payroll (login as hr_admin), controlling reports (login as accountant)",
       "item": [
         {

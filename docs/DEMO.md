@@ -227,6 +227,36 @@ environment.
 customer) and `test_demo_script.py`, which runs this script against a live server on a freshly
 seeded database, twice.
 
+## 11. Side by side: your ERP stays, the intelligence runs on its data (Wave 10b)
+
+The samples are an invented company's export. Each file has one row that is rejected on purpose,
+to show a reason:
+
+```bash
+for object in partners materials stock purchase_orders sales_orders; do
+  docker compose exec web python manage.py import_data --company 1000 --object $object \
+    --file docs/import-samples/$object.csv --user finance_manager
+done
+docker compose exec web python manage.py import_data --company 1000 --object partners \
+  --file docs/import-samples/partners.csv --user finance_manager    # again: "Already loaded (same file, nothing changed)"
+docker compose exec web python manage.py run_mrp --plant 1000      # now plans with the imported stock and orders
+```
+
+**Look for:**
+- partners: 4 created, Highveld *linked to existing partner 1000002 by VAT number*, and
+  `X-0401` rejected because "role must be CUSTOMER, SUPPLIER or BOTH";
+- materials: `ITM-599` rejected with the units we know;
+- stock: three initial entries (561) and `ITM-777` refused because it was never loaded;
+- orders: `PO-X3-9003` refused (supplier `S-9999` was never loaded) and `SO-X3-7003` refused
+  (Vaal Fasteners is a supplier, not a customer);
+- the second load of the same file: nothing changed;
+- MRP planning `ITM-500` and `ITM-502` with the imported stock and orders. Highveld's portal now
+  shows `PO-X3-9002`.
+
+The layout is in [IMPORT_FORMAT.md](IMPORT_FORMAT.md).
+**Proved by:** `test_connect.py`, which loads these same sample files, so the samples cannot drift
+from what loads.
+
 ## When you are done
 
 ```bash

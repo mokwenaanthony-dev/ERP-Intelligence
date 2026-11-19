@@ -343,3 +343,11 @@ PartnerNetworkPermission = RolePermission.build(
     write=(Role.PURCHASING_OFFICER,),
     read=(Role.INVENTORY_MANAGER, Role.FINANCE_MANAGER, Role.PRODUCTION_PLANNER, Role.VIEWER),
 )
+
+# Wave 10b: loading another ERP's data changes master data and stock across modules, so only the
+# finance manager (and administrators) may import; the people who check the results may read them.
+ConnectPermission = RolePermission.build(
+    "ConnectPermission",
+    write=(Role.FINANCE_MANAGER,),
+    read=(Role.ACCOUNTANT, Role.PURCHASING_OFFICER, Role.SALES_REP, Role.INVENTORY_MANAGER, Role.VIEWER),
+)

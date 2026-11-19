@@ -1,0 +1,6 @@
+external_id,description,unit,type,number,group,plant
+ITM-500,Hex bolt M12 x 50,EA,HAWA,,FASTENERS,1000
+ITM-501,Washer M12,EA,HAWA,,FASTENERS,1000
+ITM-502,Steel plate 6 mm,KG,ROH,,STEEL,1000
+TG-1001,Standard widget,EA,HAWA,TG-1001,,1000
+ITM-599,Packing crate,CRATE,HAWA,,,1000

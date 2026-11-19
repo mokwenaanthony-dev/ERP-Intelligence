@@ -144,9 +144,11 @@ def supplier_part(base: str) -> dict:
     else:
         say(f"4. Demand outlook for the next 3 months ({outlook['note']})")
         for material in outlook["materials"]:
-            cells = ", ".join(f"{month}: ordered {cell['ordered']}, planned {cell['planned']}"
+            cells = ", ".join(f"{month}: ordered {cell['ordered']}"
+                              + (f", planned {cell['planned']}" if material["planned_shared"] else "")
                               for month, cell in material["months"].items())
-            say(f"   {material['material']:<8} {cells}")
+            fair = "" if material["planned_shared"] else "  (other sources: plans not shared)"
+            say(f"   {material['material']:<8} {cells}{fair}")
     return {"order": order["order_number"], "item": item["item_number"], "reference": reference,
             "late": later > agreed}
 

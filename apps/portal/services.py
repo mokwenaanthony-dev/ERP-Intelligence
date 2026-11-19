@@ -39,7 +39,7 @@ from django.utils import timezone
 from apps.finance import services as finance
 from apps.finance.services import PostingError
 from apps.masterdata.models import SupplierRole
-from apps.planning.models import ForecastPeriod, PlannedOrder
+from apps.planning.models import ForecastPeriod, MaterialPlanning, PlannedOrder
 from apps.planning.services import add_months, month_start
 from apps.purchasing.models import PurchaseOrder, PurchaseOrderItem
 from apps.sales.models import SalesOrder
@@ -334,6 +334,12 @@ def outlook(access: PartnerAccess, *, on: date, months: int = 6) -> dict:
     already ordered from this supplier and still open, the purchases MRP has planned (open BUY
     planned orders of the latest runs), and the demand forecast where the material has one. An
     outlook, not an order: only a purchase order commits the company.
+
+    **Fair competition (v0.22.0).** Planned purchases do not name a supplier yet, and the forecast
+    is the company's whole demand. Both are shared only for materials where this supplier is the
+    preferred supplier (planning parameters) or the only source; for a material with other sources
+    the supplier sees what is ordered from it, and ``planned_shared`` is false, so it never learns
+    volumes that a competitor may get.
     """
     agreed = ForecastShare.objects.filter(company_code=access.company_code, supplier=access.partner,
                                           active=True).first()
@@ -347,14 +353,20 @@ def outlook(access: PartnerAccess, *, on: date, months: int = 6) -> dict:
     first = month_start(on)
     periods = [add_months(first, i) for i in range(months)]
     end = add_months(first, months)
-    supplied = sorted(m for m, ids in _sources(company, on).items() if access.partner.pk in ids)
+    sources = _sources(company, on)
+    supplied = sorted(m for m, ids in sources.items() if access.partner.pk in ids)
+    preferred = set(MaterialPlanning.objects.filter(plant__company_code=company, preferred_supplier=access.partner)
+                    .values_list("material_id", flat=True))
+    shared = {m for m in supplied if m in preferred or len(sources[m]) == 1}
     rows: dict[int, dict] = {}
 
     def row(material) -> dict:
         """The outlook row for a material, created on first use."""
-        empty = {f"{p:%Y-%m}": {"ordered": ZERO, "planned": ZERO, "forecast": None} for p in periods}
+        plans = material.pk in shared
+        empty = {f"{p:%Y-%m}": {"ordered": ZERO, "planned": ZERO if plans else None, "forecast": None}
+                 for p in periods}
         return rows.setdefault(material.pk, {"material": material.number, "description": material.description,
-                                             "months": empty})
+                                             "planned_shared": plans, "months": empty})
 
     def bucket(day: date) -> str | None:
         """The month column a date falls in (overdue counts in the first), or None beyond the horizon."""
@@ -370,20 +382,21 @@ def outlook(access: PartnerAccess, *, on: date, months: int = 6) -> dict:
         if month and open_quantity > 0:
             row(item.material)["months"][month]["ordered"] += open_quantity
     for planned in (PlannedOrder.objects.filter(run__in=_latest_runs(company), procurement="BUY",
-                                                status=PlannedOrder.Status.OPEN, material_id__in=supplied)
+                                                status=PlannedOrder.Status.OPEN, material_id__in=shared)
                     .select_related("material")):
         month = bucket(planned.due_date)
         if month:
             row(planned.material)["months"][month]["planned"] += planned.quantity
     for period in (ForecastPeriod.objects.filter(item__run__plant__company_code=company,
-                                                 item__material_id__in=supplied, period__gte=first, period__lt=end)
+                                                 item__material_id__in=shared, period__gte=first, period__lt=end)
                    .select_related("item__material").order_by("item__material_id", "period", "-item__run_id")):
         cell = row(period.item.material)["months"][f"{period.period:%Y-%m}"]
         if cell["forecast"] is None:  # the newest run's forecast for that month
             cell["forecast"] = period.quantity
     logger.info("Demand outlook read by supplier %s: %d material(s)", access.partner.number, len(rows))
     return {"supplier": access.partner.number, "from": first, "months": months, "shared_since": agreed.agreed_at,
-            "note": "An outlook, not an order: only a purchase order commits the company.",
+            "note": "An outlook, not an order: only a purchase order commits the company. Planned purchases "
+                    "and forecasts are shown only where you are the preferred or only supplier.",
             "materials": sorted(rows.values(), key=lambda r: r["material"])}
 
 
