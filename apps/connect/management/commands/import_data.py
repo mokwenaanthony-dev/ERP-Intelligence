@@ -2,7 +2,8 @@
 
 Loads one file exported from another ERP, exactly as ``POST /api/connect/imports/``: through the
 modules' own rules, one row at a time, idempotent (the same file again returns the first batch;
-rows already loaded stay unchanged). Prints the counts and every rejected row with its reason.
+rows already loaded stay unchanged; rows rejected before are tried again). Prints the counts and
+every rejected row with its reason.
 Load the objects in this order: partners, materials, stock, purchase_orders, sales_orders.
 """
 from pathlib import Path
@@ -45,7 +46,13 @@ class Command(BaseCommand):
                                                   content=path.read_bytes(), file_name=path.name, user=person)
         except FileError as exc:
             raise CommandError(str(exc)) from exc
-        verb = "Loaded" if created else "Already loaded (same file, nothing changed)"
+        if created:
+            verb = "Loaded"
+        elif getattr(batch, "retried", 0):
+            verb = (f"Loaded before; retried {batch.retried} rejected row(s), {batch.now_loaded} now loaded. "
+                    "In all")
+        else:
+            verb = "Already loaded (same file, nothing changed)"
         self.stdout.write(self.style.SUCCESS(
             f"{verb}: {path.name} as {object} from {source}: {batch.rows} row(s), {batch.created} created, "
             f"{batch.updated} updated, {batch.unchanged} unchanged, {batch.rejected} rejected"))

@@ -236,7 +236,40 @@ def test_the_import_command(demo, make_user):
     assert "row 7 X-0401: role must be CUSTOMER, SUPPLIER or BOTH" in text
     call_command("import_data", "--company", "1000", "--object", "partners", "--file", file, "--user", "finance",
                  stdout=out)
-    assert "Already loaded (same file, nothing changed)" in out.getvalue()
+    assert "Loaded before; retried 1 rejected row(s), 0 now loaded" in out.getvalue()  # X-0401 tried again
     with pytest.raises(CommandError, match="Missing column"):
         call_command("import_data", "--company", "1000", "--object", "stock", "--file", file, "--user", "finance",
                      stdout=out)
+
+
+# --- v0.22.1: a rejected row gets another try when the same file comes again ------------------------------------
+
+def test_orders_loaded_before_their_partners_load_when_the_file_comes_again(demo, loader):
+    """Found in the v0.22.0 Docker demo: orders loaded before the partners stayed rejected for good."""
+    early, _ = load(demo, loader, "purchase_orders")
+    assert early.rejected == 3 and "load partners first" in by_key(early)["PO-X3-9001"]["detail"]
+    load(demo, loader, "partners")
+    load(demo, loader, "materials")
+    again, created = load(demo, loader, "purchase_orders")
+    assert not created and again.pk == early.pk and ImportBatch.objects.count() == 3  # the same batch
+    assert (again.retried, again.now_loaded) == (3, 2)
+    rows = by_key(again)
+    assert rows["PO-X3-9001"]["status"] == "created" and rows["PO-X3-9002"]["status"] == "created"
+    assert "No partner 'S-9999'" in rows["PO-X3-9003"]["detail"]  # its cause is still there
+    assert (again.created, again.rejected) == (2, 1)
+    third, _ = load(demo, loader, "purchase_orders")
+    assert (third.retried, third.now_loaded) == (1, 0)  # only the one still rejected is tried
+    assert PurchaseOrder.objects.filter(supplier_reference__startswith="PO-X3-").count() == 2  # never twice
+
+
+def test_a_retry_never_reapplies_rows_that_loaded(demo, loader):
+    """Stock that loaded is not posted again: a retry must not undo what happened since."""
+    load(demo, loader, "partners")
+    load(demo, loader, "materials")
+    load(demo, loader, "stock")  # ITM-777 is rejected
+    bolt, main = Material.objects.get(number="ITM-500"), StorageLocation.objects.get(plant__code="1000", code="0001")
+    inventory.post_goods_movement(movement_type="702", plant=main.plant, posting_date=ON, user=loader,
+                                  items=[inventory.ItemInput(material=bolt, storage_location=main, quantity=D("100"))])
+    retry, _ = load(demo, loader, "stock")
+    assert (retry.retried, retry.now_loaded) == (1, 0)
+    assert inventory.location_stock(bolt, main) == D("1900.000")  # not brought back to the old 2000

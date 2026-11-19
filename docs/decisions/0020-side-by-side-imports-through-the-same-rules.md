@@ -1,6 +1,6 @@
 # 0020. Side by side: another ERP's exports load through the same rules, idempotently, row by row
 
-- **Status:** Accepted, 2026-11-18 (Wave 10b)
+- **Status:** Accepted, 2026-11-18 (Wave 10b); amended 2026-11-19 in v0.22.1 (rejected rows are retried)
 
 ## Context
 
@@ -47,6 +47,14 @@ source may be given.
   material it sees what is ordered from it, marked `planned_shared: false`.
 - **Imports are the finance manager's.** They change master data and stock across modules. The
   other business roles may read the batches. Partner roles are refused, like every internal route.
+
+**v0.22.1.** In the first Docker demo, the purchase and sales order files were loaded before the
+partners, so every order was rejected ("load partners first"). Loading them again after the
+partners returned the first, all-rejected batch: the file-level rule was too strong, and those
+orders could never load from that file. Now the same file again **retries only the rows that were
+rejected**, in the same batch. Rows that loaded are never applied twice. A retry cannot post stock
+again or bring it back to an old snapshot; a test posts a stock movement between two loads to
+prove it.
 
 ## Alternatives considered
 

@@ -20,8 +20,11 @@ are in `GET /api/connect/imports/<id>/`. Only the finance manager (and administr
   so it meets every business rule. A row that breaks one is **rejected with the rule's own message**
   ("Partner 'S-0202' (1000010) is not a customer in 1000."); the other rows still load. Each order
   loads in its own transaction: all of its lines, or none.
-- **The same file again changes nothing.** It returns the first load's result (200 in the API,
-  "Already loaded" from the command).
+- **The same file again changes nothing that loaded.** It returns the first load's result (200 in
+  the API, "Already loaded" from the command). If that load rejected rows, **only those rows are
+  tried again**, because their cause may have been fixed since: the partners they needed have now
+  been loaded, or a period has been opened. Rows that loaded are never applied a second time, so a
+  retry cannot post stock twice or undo what happened since.
 - **Each row is matched by your key.** It is matched by `external_id` (or `order`, or `material`
   and `plant` for stock) to what was loaded before. An unchanged row is `unchanged`; a changed
   partner or material is `updated`. An order loaded before is never created twice. A changed
