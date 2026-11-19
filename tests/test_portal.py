@@ -340,3 +340,28 @@ def test_setup_demo_portal_is_idempotent(demo, make_user):
     access = services.access_for(PartnerAccess.objects.get(user__username="highveld").user)
     open_orders = [o for o in services.purchase_orders(access) if o["status"] == "RELEASED"]
     assert len(open_orders) == 1 and open_orders[0]["items"][0]["open"] == D("50.000")
+
+
+def test_planned_buys_are_shared_only_with_the_preferred_or_only_supplier(net, client_for):
+    """v0.22.0, fair competition: a supplier never sees plans for a material a competitor also supplies."""
+    from apps.planning.models import MaterialPlanning
+
+    client_for(Role.PURCHASING_OFFICER).post(f"{API}/network/forecast-shares/", {
+        "company_code": "1000", "supplier": net.supplier.number, "active": True}, format="json")
+    plant = Plant.objects.get(code="1000")
+    mrp.run_mrp(plant, planning_date=date.today())
+    outlook = net.clients["highveld"].get(f"{API}/outlook/").json()
+    by_material = {m["material"]: m for m in outlook["materials"]}
+    # TG-1001 and TG-1002 are also on Second Supplier's purchase order: plans are not shared
+    for number in ("TG-1001", "TG-1002"):
+        assert by_material[number]["planned_shared"] is False
+        assert all(cell["planned"] is None and cell["forecast"] is None
+                   for cell in by_material[number]["months"].values())
+    assert sum(D(c["ordered"]) for c in by_material["TG-1001"]["months"].values()) == D("100.000")
+    # Highveld becomes the preferred supplier of TG-1001: its plans are shared again
+    MaterialPlanning.objects.update_or_create(material=Material.objects.get(number="TG-1001"), plant=plant,
+                                              defaults={"procurement": "BUY", "preferred_supplier": net.supplier,
+                                                        "lead_time_days": 14})
+    again = {m["material"]: m for m in net.clients["highveld"].get(f"{API}/outlook/").json()["materials"]}
+    assert again["TG-1001"]["planned_shared"] is True and again["TG-1002"]["planned_shared"] is False
+    assert "preferred or only supplier" in outlook["note"]

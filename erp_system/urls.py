@@ -34,4 +34,6 @@ urlpatterns = [
     path("api/control/", include("apps.control.urls")),
     # Suppliers and customers (Wave 10a): their own documents only
     path("api/portal/", include("apps.portal.urls")),
+    # Side by side (Wave 10b): loading another ERP's master data and open documents
+    path("api/connect/", include("apps.connect.urls")),
 ]

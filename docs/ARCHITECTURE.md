@@ -253,7 +253,8 @@ Design rules:
 | 9a ✅ | Control tower: north-star KPIs with targets, status and basis; the future state; a problems inbox from every module with owners, filtered by role | One view of the state of the business |
 | 9b ✅ | Recommendations with reasons and expected impact; owners' decisions recorded once (idempotent) with a track record; a grounded AI assistant (KG-RAG, cited facts, off by default, never executes); the [business-rules catalogue](RULES.md) | Closes the "AI recommends, people decide" loop of the [vision](VISION.md) |
 | 10a ✅ | Partner network: portal for suppliers (confirmations, delivery notices, quotes, a demand outlook shared by agreement) and customers (order status), behind a role wall tested against every internal route; confirmed dates drive MRP and the control tower ([ADR 0019](decisions/0019-a-partner-portal-in-the-monolith-behind-a-role-wall.md)) | Everyone plugged in |
-| 10b 🔜 | Side by side: an adapter reading master data and open documents from an existing ERP; anonymised benchmarks | No rip-and-replace |
+| 10b ✅ | Side by side: an existing ERP's partners, materials, stock and open orders loaded from CSV exports through the same rules, idempotent per file and per row, with a mapping per source ([ADR 0020](decisions/0020-side-by-side-imports-through-the-same-rules.md), [format](IMPORT_FORMAT.md)) | No rip-and-replace |
+| 10c 🔜 | A Sage X3 mapping tested on real SEED exports; anonymised benchmarks | Learning from each other |
 | 11 🗺️ | PLM and digital twin: engineering BOMs, versions, change management; the demo company packaged as a model-company template | Needs production and MES data |
 
 Each wave ends in a tested release, so the system works at every stage of the journey.

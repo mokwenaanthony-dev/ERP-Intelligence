@@ -8,10 +8,11 @@ posted, and the API answers 400 with the message shown (placeholders in braces a
 These are the "learned rules" of the system, the part of an ERP that is worth more than its code
 (see `docs/VISION.md`).
 
-**292 rules** in 12 areas.
+**318 rules** in 13 areas.
 
 | Area | Rules |
 |---|---:|
+| connect | 26 |
 | control | 6 |
 | crm | 38 |
 | finance | 33 |
@@ -24,6 +25,37 @@ These are the "learned rules" of the system, the part of an ERP that is worth mo
 | purchasing | 35 |
 | sales | 27 |
 | srm | 37 |
+
+## connect
+
+| Rule (message shown) | Where | Error |
+|---|---|---|
+| Unknown source '{name}': use one of {', '.join(sorted(MAPPINGS))}. | `mappings.py` mapping | FileError |
+| Missing column(s) for {object_type}: {', '.join(missing)}. | `mappings.py` read | FileError |
+| The file is empty. | `mappings.py` read | FileError |
+| The file is not UTF-8 text: export it as CSV (UTF-8). | `mappings.py` read | FileError |
+| {name} is required. | `services.py` day | RowError |
+| {name}: {exc}. | `services.py` day | RowError |
+| {name} is required. | `services.py` decimal | RowError |
+| {name} must be greater than zero. | `services.py` decimal | RowError |
+| {name}: {exc}. | `services.py` decimal | RowError |
+| Unknown object '{object_type}': use one of {', '.join(ObjectType.values)}. | `services.py` import_file | FileError |
+| The material number '{number}' is longer than 18 characters: give a shorter number. | `services.py` load_material | RowError |
+| Unit '{row['unit']}' is not known: map it to one of {', '.join(UnitOfMeasure.objects.order_by('code').values_list('code', flat=True))}. | `services.py` load_material | RowError |
+| type must be one of {', '.join(Material.MaterialType.values)}, not '{row['type']}'. | `services.py` load_material | RowError |
+| All lines of order {key} need the same {partner_field} and order date. | `services.py` load_order | RowError |
+| Order {key} changed in {self.source.name} after it was loaded as {existing.number}; changing loaded orders is not supported yet: change it here or cancel and reload. | `services.py` load_order | RowError |
+| country must be a two-letter code, not '{row['country']}'. | `services.py` load_partner | RowError |
+| name is required. | `services.py` load_partner | RowError |
+| role must be CUSTOMER, SUPPLIER or BOTH, not '{row['role']}'. | `services.py` load_partner | RowError |
+| Storage location '{row['storage_location']}' is not in plant {plant.code}. | `services.py` load_stock | RowError |
+| quantity cannot be negative. | `services.py` load_stock | RowError |
+| unit_price is required for the first stock of a material at a plant (initial entry). | `services.py` load_stock | RowError |
+| No material '{key}' has been loaded from {self.source.name}: load materials first. | `services.py` material | RowError |
+| No partner '{key}' has been loaded from {self.source.name}: load partners first. | `services.py` partner | RowError |
+| Partner '{key}' ({partner.number}) is not a {role.lower()} in {self.company.code}. | `services.py` partner | RowError |
+| Plant '{code}' is not a plant of company code {self.company.code}. | `services.py` plant | RowError |
+| No such import. | `views.py` get | NotFound |
 
 ## control
 

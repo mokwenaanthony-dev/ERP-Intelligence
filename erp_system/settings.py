@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "apps.planning",
     "apps.control",
     "apps.portal",
+    "apps.connect",
 ]
 
 MIDDLEWARE = [

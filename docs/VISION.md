@@ -19,8 +19,9 @@ no AI on its own, replaces that.
 
 It follows the direction the large vendors are taking (SAP is building AI agents into its own
 product), at a scale one person can read and run. A small or mid-sized company can adopt it **in
-steps**: as its own system, or as an intelligence layer beside the ERP it already runs (planned,
-Wave 10), because the intelligence sits behind documented services and contracts.
+steps**: as its own system, or as an intelligence layer beside the ERP it already runs, loading
+that ERP's exports through the same rules ([side by side](IMPORT_FORMAT.md), Wave 10b), because the
+intelligence sits behind documented services and contracts.
 
 ## What it solves
 
@@ -88,16 +89,16 @@ On time in full (to customers, from suppliers) · forecast accuracy · inventory
 - **Idempotent everywhere:** repeating an operation gives the first result
   ([ADR 0010](decisions/0010-idempotency-of-every-state-changing-operation.md)).
 
-## Scorecard (after Wave 10a)
+## Scorecard (after Wave 10b)
 
 | Goal | Built | Next |
 |---|---|---|
-| Everything plugged in | ERP modules on one database; MES and Rust edge agents through the Unified Namespace (MQTT, ISA-95); `ml_service`; suppliers and customers through a portal, each seeing only its own documents (10a) | An adapter to run beside an existing ERP (10b) |
+| Everything plugged in | ERP modules on one database; MES and Rust edge agents through the Unified Namespace (MQTT, ISA-95); `ml_service`; suppliers and customers through a portal, each seeing only its own documents (10a); an existing ERP's data loaded side by side through the same rules (10b) | A Sage X3 mapping tested on real exports (10c); live feeds instead of files |
 | Layers integrated in real time | Outbox → knowledge graph and UNS; live machine state; MRP within 15 minutes of a change | Alerts pushed to owners |
 | Current state | Live cell state, Customer 360, document flow, dashboards; the control tower: KPIs with targets, status and basis, and a problems inbox with owners (9a) | KPI history over time |
 | Future state | Demand forecasts with intervals; MRP projected stock; revenue at risk per supplier; order book and late planned orders beside the KPIs (9a) | — |
 | ML predicts | Demand forecasting by backtested method; forecast accuracy against actuals | Supplier delay, machine failure (later) |
 | AI recommends | Every problem with an action, a reason and its expected impact; an assistant that explains from cited facts (KG-RAG) and never executes, off by default (9b) | — |
 | Stakeholders decide | The owner accepts or rejects, once, with a reason; a track record per kind of recommendation: accepted, rejected, resolved (9b) | Tune the rules from the track record |
-| Learned rules as an asset | [292 business rules](RULES.md) catalogued from the code, kept true by a test (9b) | Country rules beyond South Africa in one clear layer |
-| Digital supply chain | SRM: onboarding, RFQs, contracts, scorecards; suppliers confirm, announce and quote in person; their dates drive MRP and the control tower; the demand outlook shared by agreement (10a) | Anonymised benchmarks (10b); EDI for large suppliers |
+| Learned rules as an asset | [318 business rules](RULES.md) catalogued from the code, kept true by a test (9b) | Country rules beyond South Africa in one clear layer |
+| Digital supply chain | SRM: onboarding, RFQs, contracts, scorecards; suppliers confirm, announce and quote in person; their dates drive MRP and the control tower; the demand outlook shared by agreement, planned buys only with the preferred or only supplier (10a, 10b) | Anonymised benchmarks (10c); EDI for large suppliers |

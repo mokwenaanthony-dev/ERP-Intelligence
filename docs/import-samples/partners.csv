@@ -1,0 +1,7 @@
+external_id,name,role,vat_number,registration_number,city,country,payment_terms_days
+C-0101,Soweto Builders Supply (Pty) Ltd,CUSTOMER,4310000001,2015/123456/07,Johannesburg,ZA,30
+C-0102,Durban Hardware Hub CC,CUSTOMER,4310000002,,Durban,ZA,45
+S-0201,Highveld Supplies CC,SUPPLIER,4222222222,,Johannesburg,ZA,30
+S-0202,Vaal Fasteners (Pty) Ltd,SUPPLIER,4310000003,,Vanderbijlpark,ZA,30
+B-0301,Cape Steel Traders,BOTH,4310000004,,Cape Town,ZA,30
+X-0401,Northern Distribution,DISTRIBUTOR,4310000005,,Polokwane,ZA,30
