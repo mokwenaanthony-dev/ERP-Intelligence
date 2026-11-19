@@ -230,15 +230,19 @@ seeded database, twice.
 ## 11. Side by side: your ERP stays, the intelligence runs on its data (Wave 10b)
 
 The samples are an invented company's export. Each file has one row that is rejected on purpose,
-to show a reason:
+to show a reason. Run each command on its own, and wait for `docker compose up` to finish before
+loading: `web` creates the import tables when it starts (`migrate` below makes sure). If you load
+in the wrong order, the orders are rejected with "load partners first"; load the partners, then
+the same order files again, and only the rejected orders are tried:
 
 ```bash
+docker compose exec web python manage.py migrate    # first, after any rebuild: the import tables must exist
 for object in partners materials stock purchase_orders sales_orders; do
   docker compose exec web python manage.py import_data --company 1000 --object $object \
     --file docs/import-samples/$object.csv --user finance_manager
 done
 docker compose exec web python manage.py import_data --company 1000 --object partners \
-  --file docs/import-samples/partners.csv --user finance_manager    # again: "Already loaded (same file, nothing changed)"
+  --file docs/import-samples/partners.csv --user finance_manager    # again: only the rejected row is retried
 docker compose exec web python manage.py run_mrp --plant 1000      # now plans with the imported stock and orders
 ```
 
@@ -249,7 +253,8 @@ docker compose exec web python manage.py run_mrp --plant 1000      # now plans w
 - stock: three initial entries (561) and `ITM-777` refused because it was never loaded;
 - orders: `PO-X3-9003` refused (supplier `S-9999` was never loaded) and `SO-X3-7003` refused
   (Vaal Fasteners is a supplier, not a customer);
-- the second load of the same file: nothing changed;
+- the second load of the same file: what loaded is unchanged, and only the rejected row is tried
+  again ("retried 1 rejected row(s), 0 now loaded", since its cause is still there);
 - MRP planning `ITM-500` and `ITM-502` with the imported stock and orders. Highveld's portal now
   shows `PO-X3-9002`.
 

@@ -8,7 +8,8 @@ their journal entries. A rule broken by a row rejects that row, with the rule's 
 
 **Idempotent at two levels** (ADR 0010):
 
-* the same file again returns the first batch and changes nothing (its fingerprint);
+* the same file again returns the first batch and changes nothing (its fingerprint); if that load
+  rejected rows, only those rows are tried again (v0.22.1): their cause may have been fixed since;
 * every row is matched to what was loaded before by the source's own key (``ExternalReference``):
   unchanged rows stay unchanged, a changed partner or material is updated, a document already
   loaded is not created twice. Stock is a snapshot: only the difference from what we hold is
@@ -304,8 +305,11 @@ class Loader:
         return "created", order.order_number, f"{len(lines)} line(s)"
 
 
-def _run(loader: Loader, object_type: str, rows: list[tuple[int, dict]]) -> list[Result]:
-    """Load every row (every order) in its own transaction; a broken rule rejects only that row."""
+def _run(loader: Loader, object_type: str, rows: list[tuple[int, dict]], only: set[str] | None = None) -> list[Result]:
+    """Load every row (every order) in its own transaction; a broken rule rejects only that row.
+
+    With ``only``, just the rows (orders) with those keys are loaded: a retry of rejected rows.
+    """
     results: list[Result] = []
 
     def attempt(row_number: int, key: str, step):
@@ -329,7 +333,8 @@ def _run(loader: Loader, object_type: str, rows: list[tuple[int, dict]]) -> list
             orders[row["order"]].append(row)
             first_row.setdefault(row["order"], number)
         for key, lines in orders.items():
-            attempt(first_row[key], key, lambda k=key, ls=lines: loader.load_order(object_type, k, ls))
+            if only is None or key in only:
+                attempt(first_row[key], key, lambda k=key, ls=lines: loader.load_order(object_type, k, ls))
     else:
         step = {ObjectType.PARTNERS: loader.load_partner, ObjectType.MATERIALS: loader.load_material,
                 ObjectType.STOCK: loader.load_stock}[object_type]
@@ -339,19 +344,58 @@ def _run(loader: Loader, object_type: str, rows: list[tuple[int, dict]]) -> list
             if not row[key_field]:
                 results.append(Result(number, "", "rejected", "", f"{key_field} is required."))
                 continue
-            attempt(number, key, lambda r=row: step(r))
+            if only is None or key in only:
+                attempt(number, key, lambda r=row: step(r))
     return sorted(results, key=lambda r: r.row)
+
+
+def _count(batch: ImportBatch, results: list[Result]) -> None:
+    for status in ("created", "updated", "unchanged", "rejected"):
+        setattr(batch, status, sum(r.status == status for r in results))
+    batch.results = [r.__dict__ for r in sorted(results, key=lambda r: r.row)]
+
+
+def _retry(batch: ImportBatch, layout: Mapping, content: bytes, user, on: date) -> ImportBatch:
+    """The same file again, when its earlier load rejected rows: try those rows once more (v0.22.1).
+
+    A rejected row may load now: the partner it needed was loaded since, a period was opened. Rows
+    that loaded before are not touched (no second stock posting, no second order); a rejected row
+    with no key cannot load and stays as it was. The batch keeps one result per row, the latest.
+    """
+    with transaction.atomic():
+        batch = ImportBatch.objects.select_for_update().get(pk=batch.pk)  # one retry at a time
+        earlier = [Result(**r) for r in batch.results]
+        keys = {r.key for r in earlier if r.status == "rejected" and r.key}
+        if not keys:
+            return batch
+        rows = layout.read(content, batch.object_type)
+        retried = _run(Loader(batch.company_code, layout, batch, user, on), batch.object_type, rows, only=keys)
+        by_key = {r.key: r for r in retried}
+        merged = [by_key.get(r.key, r) if r.status == "rejected" else r for r in earlier]
+        _count(batch, merged)
+        batch.save()
+    batch.retried = len(retried)
+    batch.now_loaded = sum(r.status != "rejected" for r in retried)
+    logger.info("Import of %s %s for %s repeated: %d rejected row(s) retried, %d now loaded", batch.source,
+                batch.object_type, batch.company_code.code, batch.retried, batch.now_loaded)
+    return batch
 
 
 def import_file(company_code, *, source: str, object_type: str, content: bytes, user, file_name: str = "",
                 on: date | None = None) -> tuple[ImportBatch, bool]:
-    """Load one exported file; returns (batch, created). The same file again returns the first batch."""
+    """Load one exported file; returns (batch, created).
+
+    The same file again returns the first batch. If that load rejected rows, those rows (and only
+    those) are tried again, and the batch shows ``retried`` and ``now_loaded``.
+    """
     if object_type not in ObjectType.values:
         raise FileError(f"Unknown object '{object_type}': use one of {', '.join(ObjectType.values)}.")
     layout = mapping(source)
     fingerprint = _fingerprint(company_code.code, source, object_type, hashlib.sha256(content).hexdigest())
-    existing = ImportBatch.objects.filter(fingerprint=fingerprint).first()
+    existing = ImportBatch.objects.filter(fingerprint=fingerprint).select_related("company_code").first()
     if existing:
+        if existing.rejected:
+            return _retry(existing, layout, content, user, on or timezone.localdate()), False
         logger.info("Import of %s %s for %s repeated: returning batch %s", source, object_type, company_code.code,
                     existing.pk)
         return existing, False
@@ -363,9 +407,7 @@ def import_file(company_code, *, source: str, object_type: str, content: bytes, 
     except IntegrityError:  # the same file at the same moment: the first one is the batch
         return ImportBatch.objects.get(fingerprint=fingerprint), False
     results = _run(Loader(company_code, layout, batch, user, on or timezone.localdate()), object_type, rows)
-    for status in ("created", "updated", "unchanged", "rejected"):
-        setattr(batch, status, sum(r.status == status for r in results))
-    batch.results = [r.__dict__ for r in results]
+    _count(batch, results)
     batch.save()
     logger.info("Imported %s %s for %s: %d row(s), %d created, %d updated, %d unchanged, %d rejected",
                 source, object_type, company_code.code, batch.rows, batch.created, batch.updated, batch.unchanged,
@@ -379,4 +421,5 @@ def batch_view(batch: ImportBatch) -> dict:
             "object": batch.object_type, "file_name": batch.file_name, "rows": batch.rows,
             "created": batch.created, "updated": batch.updated, "unchanged": batch.unchanged,
             "rejected": batch.rejected, "imported_by": batch.imported_by.username, "imported_at": batch.imported_at,
+            "retried": getattr(batch, "retried", 0), "now_loaded": getattr(batch, "now_loaded", 0),
             "results": batch.results}
