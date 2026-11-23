@@ -1,6 +1,6 @@
 # 0011. Live cell state: the latest state in the ERP, projected onto the graph
 
-- **Status:** Accepted, 2026-11-12 (Wave 6d)
+- **Status:** Accepted, 2026-11-12 (Wave 6d); amended 2026-11-23 in v0.23.1 (a last will is accepted)
 
 ## Context
 
@@ -31,6 +31,29 @@ straight into Neo4j would break `graph_rebuild` and put a second writer on the g
   the graph query `GET /api/graph/shop-floor/?plant=` (cells DOWN or OFFLINE, the released
   production orders with operations there, the open sales orders for what they make, each filtered
   by role), and KG-RAG context (the cell's properties).
+
+**v0.23.1: the last will.** "Older never overwrites newer" had a hole, found by reading Volkan
+Alkılıç's post on frozen values ("The device died. Your dashboard still says 72.4 °C"). MES 0.2.0's
+edge agent registers its OFFLINE last will when it connects, so when it dies the broker publishes
+that message stamped with the connection's time, hours older than the agent's last report. The ERP
+ignored it as older and kept the cell RUNNING in the equipment tree and on the graph, and the
+control tower raised nothing. The broker's retained topic said OFFLINE; only the ERP's copy was
+frozen. Now:
+
+- An OFFLINE from the **same source** as the stored state is accepted whatever its timestamp: a
+  will cannot know when it will be sent. `since` becomes the time the ERP heard it, the order is
+  cleared, and `reported_at` stays the newest seen, so a delayed report from before the failure is
+  still ignored and time never goes backwards. The same will again changes nothing.
+- An OFFLINE from another source still follows the timestamp rule: one publisher's will cannot
+  overrule another's report.
+- An optional `session` in `equipment-state/v1` (like Sparkplug's bdSeq) tells the will of an
+  earlier connection from the current one: if both carry a session and they differ, the will is
+  ignored. Until the MES sends it (MES 0.2.1), a will that the broker publishes after the agent has
+  already reconnected could mark a running cell OFFLINE until its next report. The broker's
+  retained topic has the same problem (it keeps the late will too), so the real fix is on the edge.
+- Not yet: freshness. With report by exception, a steady cell sends nothing, so the ERP cannot tell
+  a quiet cell from a silent one. That needs a heartbeat from the edge first (MES 0.2.1); then the
+  ERP can mark a state stale when it has not been confirmed in time.
 
 ## Alternatives considered
 
