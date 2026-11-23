@@ -9,6 +9,11 @@ sides build against this document; it is the only thing they share
 > Status: **version 1, accepted 2026-11-12**. Implemented on the ERP side in Wave 6a (`apps/uns`) and on
 > the MES side in [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0. From here on, a change is a new schema version
 > (section 5).
+>
+> **Machine-readable since Wave 6e:** every message below is also a JSON Schema file in
+> [`contract/uns/v1/`](../contract/uns/README.md), with examples and the checksums the MES pins.
+> CI checks everything the ERP publishes against them (section 6,
+> [ADR 0021](decisions/0021-uns-contract-as-json-schema-files.md)).
 
 ## 1. Topic paths
 
@@ -123,6 +128,11 @@ not released). A repeated event gets **the same result as the first time**: the 
 the same confirmation number and journal entry, plus `"replayed": true` for information. The MES
 stops resending once it has a result for the event.
 
+The ERP answers every message on the performance topic, even one that is not a readable envelope
+or has no `event_id`. That answer is `REJECTED` with `"event_id": null` (in the envelope and in
+`data`): such a message cannot be matched to a result or retried, so the answer is for the logs.
+This is the one event whose `event_id` may be null (clarified in Wave 6e; not a version change).
+
 ### `equipment-state/v1` (MES or edge → retained at `<cell path>/state/status`)
 
 ```json
@@ -141,3 +151,19 @@ consumer of an existing message, so contract version 1 is unchanged.
   meaning, is a new version (`/v2`); publishers send both versions until every consumer has moved.
 - This document is versioned with the ERP repository; the MES repository pins the contract version
   it implements.
+
+## 6. Machine-readable form
+
+[`contract/uns/v1/`](../contract/uns/README.md) states this document for machines: one JSON Schema
+(draft 2020-12) per message, refining a shared envelope, with one example of each and a
+`SHA256SUMS` file.
+
+- **Publishers are strict.** Everything the ERP publishes is checked against the schemas in CI
+  (`tests/test_uns_contract.py`), and sends no field the schema does not list. The MES pins the
+  same files by their checksums and checks what it publishes.
+- **Consumers are tolerant.** Adding an optional field is not a version change, so the schemas allow
+  fields they do not list, and the ERP's listener still posts what it can and rejects the rest with
+  a reason. A schema mistake fails a build, never production.
+- **One payload by hand:** `python manage.py uns_contract --message f.json`.
+- **A change** to a schema changes `SHA256SUMS` (`python manage.py uns_contract` rewrites it), so it
+  is always a visible change in a pull request.

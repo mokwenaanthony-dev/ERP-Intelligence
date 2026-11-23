@@ -31,3 +31,4 @@ and Consequences. Smaller day-to-day choices are listed per wave in the project 
 | [0018](0018-recommendations-decided-by-owners-and-a-grounded-ai-assistant.md) | Owners decide recommendations once; the AI assistant explains from cited facts and never executes | Accepted | 9b |
 | [0019](0019-a-partner-portal-in-the-monolith-behind-a-role-wall.md) | A partner portal in the monolith, behind a role wall; partners inform, the company decides | Accepted | 10a |
 | [0020](0020-side-by-side-imports-through-the-same-rules.md) | Side by side: another ERP's exports load through the same rules, idempotently, row by row | Accepted | 10b |
+| [0021](0021-uns-contract-as-json-schema-files.md) | The UNS contract as JSON Schema files, checked in CI on both sides; publishers strict, consumers tolerant | Accepted | 6e |

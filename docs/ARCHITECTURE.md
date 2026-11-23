@@ -245,6 +245,7 @@ Design rules:
 | 6b ✅ | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) v0.1.0 (own repository): Python MES, store-and-forward, simulator, Mosquitto | Builds against the contract |
 | 6c ✅ | Rust edge agent (MES v0.2.0): standard library only, Modbus TCP to a simulated PLC; MES dispatching, confirmations with measured hours | A real machine's data, same topics |
 | 6d ✅ | Live cell state: latest state per cell in the ERP, projected onto the graph's `Cell` nodes; shop-floor query (cells down and the orders they hold up) | Closes the loop between the UNS and the graph |
+| 6e ✅ | UNS contract as code: JSON Schema files, examples and pinned checksums for every message of contract v1; CI checks everything the ERP publishes ([ADR 0021](decisions/0021-uns-contract-as-json-schema-files.md)) | The plant's model owned in Git, read by every platform |
 | 7a ✅ | CRM: campaigns, leads, opportunities and pipeline, quotations into sales orders, service tickets with SLAs; CRM on the graph and in Customer 360 | Extends sales; enriches Customer 360 |
 | 7b ✅ | SRM: supplier onboarding with due diligence, RFQs awarded as purchase orders, contracts with releases, supplier evaluation and grades; SRM on the graph | Extends purchasing; enriches supplier risk |
 | 8a ✅ | Demand forecasting: demand history from deliveries, stateless FastAPI `ml_service` (methods chosen by backtest, 80 % intervals), numbered forecast runs | Needs sales history; MRP plans against it |
