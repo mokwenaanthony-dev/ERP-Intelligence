@@ -136,7 +136,8 @@ This is the one event whose `event_id` may be null (clarified in Wave 6e; not a 
 ### `equipment-state/v1` (MES or edge → retained at `<cell path>/state/status`)
 
 ```json
-"data": {"state": "RUNNING", "order": "MO00000001", "operation_number": 10, "since": "2026-06-01T08:00:00+02:00"}
+"data": {"state": "RUNNING", "order": "MO00000001", "operation_number": 10, "since": "2026-06-01T08:00:00+02:00",
+         "session": "press3-2026-06-01T07:59:58Z"}
 ```
 
 `state` is one of `RUNNING`, `IDLE`, `SETUP`, `DOWN`, `OFFLINE`. The ERP posts nothing for it and
@@ -144,6 +145,14 @@ sends no answer (it is state, not an event). Since Wave 6d the ERP **reads** it:
 each cell's latest state, newest `timestamp` wins, and shows it in the equipment tree and on the
 graph's `Cell` nodes ([ADR 0011](decisions/0011-live-cell-state-in-the-erp-and-the-graph.md)). A new
 consumer of an existing message, so contract version 1 is unchanged.
+
+**Last will (v0.23.1).** A publisher should register an `OFFLINE` state as its MQTT last will, so the
+broker reports the cell offline when the publisher dies. The will is built when the publisher
+connects, so its `timestamp` is the connection's: the ERP therefore accepts an `OFFLINE` from the
+**source** of the current state whatever its timestamp (and takes `since` as the time it heard it).
+The optional `session` names the publisher's connection, the same in its reports and its will (like
+Sparkplug's bdSeq): a will whose `session` is not the current one is a late will of an earlier
+connection and is ignored. An optional field, so not a version change.
 
 ## 5. Versioning
 

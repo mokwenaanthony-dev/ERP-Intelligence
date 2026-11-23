@@ -480,7 +480,8 @@ AI agents context should read the plant's model, not define it.
 ```
 edge agent / MES --> .../press3/state/status (retained, equipment-state/v1)
                           |
-uns_listen ---------------+--> CellState (latest per work centre; newer wins, repeats write nothing)
+uns_listen ---------------+--> CellState (latest per work centre; newer wins, repeats write nothing;
+                          |    an OFFLINE last will from the same source always wins, v0.23.1)
                                    | outbox
                                    +--> graph: (:Cell {state: 'DOWN', state_since: ...})
                                                (:Cell)-[:RUNNING]->(:ProductionOrder) while running

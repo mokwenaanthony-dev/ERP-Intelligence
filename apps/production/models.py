@@ -463,6 +463,9 @@ class CellState(models.Model):
     operation_number = models.PositiveIntegerField(null=True, blank=True)
     source = models.CharField(max_length=64, blank=True, default="", help_text="Who reported it, e.g. mes-edge/press3.")
     reported_at = models.DateTimeField(help_text="The message's timestamp: older reports never overwrite newer ones.")
+    session = models.CharField(max_length=64, blank=True, default="",
+                               help_text="The publisher's connection, if it says: tells a late last will "
+                                         "of an earlier connection from one of the current (v0.23.1).")
     received_at = models.DateTimeField(auto_now=True)
 
     class Meta:

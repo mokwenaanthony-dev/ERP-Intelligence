@@ -171,6 +171,7 @@ def handle_state(topic: str, payload: bytes) -> str:
             operation_number=operation,
             source=str(message.get("source") or "")[:64],
             reported_at=_when(message.get("timestamp"), "timestamp"),
+            session=str(data.get("session") or "")[:64],
         )
     except MessageError as exc:
         logger.warning("State message on %s ignored: %s", topic, exc)
