@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mokwenaanthony-dev/ERP-Intelligence/contract/uns/v1/equipment-state.schema.json",
+  "title": "equipment-state/v1",
+  "description": "What a cell is doing now. Published by the MES or an edge agent, retained at <cell path>/state/status. State, not an event: it gets no answer, and the newest timestamp wins.",
+  "allOf": [{"$ref": "envelope.schema.json"}],
+  "properties": {
+    "schema": {"const": "equipment-state/v1"},
+    "data": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": {"enum": ["RUNNING", "IDLE", "SETUP", "DOWN", "OFFLINE"]},
+        "order": {"type": ["string", "null"], "maxLength": 20},
+        "operation_number": {
+          "oneOf": [{"$ref": "envelope.schema.json#/$defs/operationNumber"}, {"type": "null"}]
+        },
+        "since": {
+          "oneOf": [{"$ref": "envelope.schema.json#/$defs/dateTime"}, {"type": "null"}]
+        }
+      }
+    }
+  }
+}

@@ -33,7 +33,7 @@ steps, as its own system or as an intelligence layer [beside the ERP it already 
 | Data trapped in modules, reconciled by hand | One Universal Journal; a knowledge graph of how everything connects |
 | Decisions on last month's reports | KPIs with targets and their basis on request; a problems inbox with an owner per problem |
 | No view of what is coming | Forecasts with ranges; MRP within 15 minutes of a change; revenue at risk per supplier |
-| Shop floor and finance out of step | Machine state and confirmations from the MES reach the books in seconds |
+| Shop floor and finance out of step | Machine state and confirmations from the MES reach the books in seconds, over a [contract](contract/uns/README.md) both sides check in CI |
 | AI pilots nobody trusts | Recommendations decided and recorded by their owner; an assistant grounded in cited facts, off by default |
 | Suppliers and customers on the phone and in e-mail | A partner portal: suppliers confirm dates, announce deliveries and quote; customers see their order status; each sees only its own documents |
 | "We can't replace our ERP" | Side by side: load master data and open documents from the ERP you have (CSV exports), through the same rules, as often as you like; your ERP stays the system of record |
@@ -97,6 +97,7 @@ delivery and invoice, and the payments that settled them, projected from the tra
 | 6b | [MES-Intelligence](https://github.com/mokwenaanthony-dev/MES-Intelligence) (own repository): Python MES on contract v1, store-and-forward, machine simulator, Mosquitto broker | Done (MES `v0.1.0`) |
 | 6c | Rust edge agent (standard library only) driving a simulated PLC over Modbus TCP; the MES dispatches jobs to it and confirms them here with measured machine hours | Done (MES `v0.2.0`) |
 | 6d | Live cell state: the ERP keeps each cell's latest state from the shop floor, shows it in the equipment tree and on the graph's cells, and answers "which cells are down and which orders do they hold up?" | Done |
+| 6e | UNS contract as code: every message of [contract v1](docs/UNS_CONTRACT.md) as a JSON Schema file with examples and pinned checksums ([`contract/uns/`](contract/uns/README.md)); CI fails when anything the ERP publishes drifts from it; publishers strict, the listener still tolerant | Done |
 | 7a | CRM: campaigns, leads (converted into customers and opportunities), a weighted pipeline, quotations accepted into sales orders at the quoted price, service tickets with SLA due times, activities; campaign return; CRM on the knowledge graph without personal data | Done |
 | 7b | SRM: supplier onboarding with due diligence (registration, VAT, B-BBEE), requests for quotation compared side by side and awarded as purchase orders, contracts released up to their target quantity, supplier evaluation from real receipts and invoices (grade A-D); SRM on the knowledge graph | Done |
 | 8a | Demand forecasting: monthly demand from deliveries, a stateless FastAPI `ml_service` choosing a method per material by backtest (naive, moving average, seasonal, exponential smoothing, damped trend, Croston), forecasts with 80 % intervals stored as numbered runs | Done |
@@ -456,6 +457,23 @@ Customer --> Service ticket (priority sets the due time: URGENT 4 h, HIGH 8 h, M
 | Personal data | Lead contact names, e-mails and phones are shown only to the sales team and administrators, never logged and never projected into the graph ([ADR 0012](docs/decisions/0012-crm-in-the-monolith-on-the-business-partner.md)) |
 | Knowledge graph (ontology 1.4) | `Campaign`, `Opportunity`, `Quotation`, `ServiceTicket` nodes; document flow starts at a quotation (`QT...` then the sales order); Customer 360 adds the pipeline and open and overdue tickets, for roles that may see sales |
 | Demo | `python manage.py setup_demo_crm`: 2 campaigns, 4 leads, a won deal from the expo (quotation QT00000001 accepted as a sales order), a lost one, an open negotiation with Acme, 2 tickets (one urgent and overdue) |
+
+## What Wave 6e delivers
+
+The UNS contract is no longer only a document. Every message is a JSON Schema file in Git that the
+ERP's CI checks against, and that the MES pins by checksum, so neither side can change the contract
+alone ([ADR 0021](docs/decisions/0021-uns-contract-as-json-schema-files.md)). The platforms that give
+AI agents context should read the plant's model, not define it.
+
+| Area | What exists |
+|---|---|
+| Schemas | [`contract/uns/v1/`](contract/uns/README.md): one draft 2020-12 schema per message (`equipment`, `operation-request`, `operation-performance`, `confirmation-result`, `equipment-state`) on a shared envelope: decimal strings (ADR 0008), dates with offsets, codes, and the `event_id` every event needs (ADR 0010) |
+| Examples | One complete message per type and a rejected answer, valid by test; test data for the other side |
+| CI | `tests/test_uns_contract.py`: everything the ERP publishes (equipment, operation requests, cleared topics, every posted, replayed and rejected answer) follows its schema and sends no undocumented field; the MES messages the tests send follow it too |
+| Pinning | `SHA256SUMS` of every file (line endings normalised); a test fails when it is stale, so a contract change is a visible, reviewed change on both sides |
+| Tolerant reader | Publishers are strict; the listener still posts what it can and rejects the rest with a reason. A schema mistake fails a build, not a shift |
+| Tool | `manage.py uns_contract --message f.json` lists every way a captured payload breaks the contract; `--check` for CI |
+| Found | The ERP answers unreadable messages with `"event_id": null`, which the document did not allow; the contract now says so (a clarification, not a new version) |
 
 ## What Wave 6d delivers
 
@@ -877,13 +895,14 @@ apps/
   graph/       Knowledge graph: outbox, projection (ontology), Neo4j store, Cypher queries, role filtering
   controlling/ Cost and profit centres, plant assignment, cost and profit centre reports
   hr/          Org units, positions, employees, PAYE tables, payroll runs; services.py holds payroll
-  uns/         Unified Namespace bridge: contract, publisher, listener (uns_listen, uns_republish)
+  uns/         Unified Namespace bridge: contract, schemas, publisher, listener (uns_listen, uns_republish, uns_contract)
   production/  ISA-95 equipment hierarchy, activity rates, BOMs, routings, cost estimate (services.py);
                production orders, confirmations, settlement (orders.py); setup_demo_production
   crm/         Campaigns, leads, opportunities, quotations, service tickets; setup_demo_crm
   srm/         Supplier onboarding, RFQs, contracts, supplier evaluation; setup_demo_srm
   control/     Control tower: KPIs and the problems inbox; control_tower
   planning/    Demand history, forecast runs, the ml_service client; MRP (mrp.py); risk and forecast accuracy (risk.py); run_forecast, run_mrp, supply_risk, setup_demo_mrp
+contract/uns/  The UNS contract as JSON Schema files, examples and checksums (shared with the MES)
 ml_service/    FastAPI demand-forecasting service: its own requirements, Dockerfile and tests
 erp_system/    Settings (settings_test.py for pytest), URLs, Celery and beat schedule
 scripts/       metabase_setup.py: dashboards as code

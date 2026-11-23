@@ -262,6 +262,29 @@ The layout is in [IMPORT_FORMAT.md](IMPORT_FORMAT.md).
 **Proved by:** `test_connect.py`, which loads these same sample files, so the samples cannot drift
 from what loads.
 
+## 12. The UNS contract, checked (Wave 6e)
+
+The contract between the ERP and the MES is a set of JSON Schema files. Check its examples, then a
+message that breaks it: a quantity sent as a JSON number instead of a decimal string.
+
+```bash
+docker compose exec web python manage.py uns_contract --check
+docker compose exec web python manage.py uns_contract --message contract/uns/v1/examples/operation-performance.json
+docker compose exec web sh -c "sed 's/\"yield_quantity\": \"100\"/\"yield_quantity\": 100/' contract/uns/v1/examples/operation-performance.json > /tmp/bad.json && python manage.py uns_contract --message /tmp/bad.json"
+```
+
+(The last command runs inside `sh -c` on purpose: Git Bash rewrites an argument that starts with
+`/`, such as `/tmp/bad.json`, into a Windows path before Docker sees it.)
+
+**Look for:** "6 example(s) follow 5 message schemas" and "SHA256SUMS is up to date"; the example
+"follows the contract (operation-performance/v1)"; the changed copy refused with
+`data/yield_quantity: 100 is not of type 'string'`. To check a real message, capture it from the
+broker (`mosquitto_sub -t '<topic>' -C 1 > f.json` in the MES repository's broker container), copy
+it in with `MSYS_NO_PATHCONV=1 docker compose cp f.json web:/tmp/f.json`, then
+`docker compose exec web sh -c "python manage.py uns_contract --message /tmp/f.json"`.
+**Proved by:** `test_uns_contract.py`, which checks everything the ERP publishes against the same
+files.
+
 ## When you are done
 
 ```bash

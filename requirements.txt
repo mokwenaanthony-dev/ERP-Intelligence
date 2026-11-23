@@ -9,3 +9,5 @@ gunicorn>=23,<24
 whitenoise>=6.8,<7
 neo4j>=6.1,<7
 paho-mqtt>=2.1,<3
+# The UNS contract's JSON Schemas (contract/uns/v1/, ADR 0021); referencing comes with it.
+jsonschema>=4.23,<5
